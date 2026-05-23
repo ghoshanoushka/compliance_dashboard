@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "zania-preview",
+      "name": "compliance-preview",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", ".preview"],
       "port": 5181

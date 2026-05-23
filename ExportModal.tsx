@@ -129,7 +129,7 @@ export function ExportModal({
             .replace(/^-|-$/g, "")
         const ext = FORMATS.find((f) => f.value === format)?.ext ?? ".csv"
         const stamp = new Date().toISOString().slice(0, 10)
-        setFilename(`zania-${slug}-${stamp}${ext}`)
+        setFilename(`${slug}-${stamp}${ext}`)
         setProgress(0)
         setPhase("running")
     }

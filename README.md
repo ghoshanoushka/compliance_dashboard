@@ -1,4 +1,4 @@
-# Zania AI · Compliance Dashboard
+# Compliance Dashboard
 
 A React + TypeScript dashboard prototype for an agentic GRC platform. Multiple modular components are composed into a single dashboard, with a local Vite sandbox for fast iteration.
 

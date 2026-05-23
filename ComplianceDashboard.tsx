@@ -221,7 +221,7 @@ export default function ComplianceDashboard() {
     const [theme, setTheme] = React.useState<"dark" | "light">(() => {
         if (typeof window === "undefined") return "dark"
         try {
-            const saved = window.localStorage.getItem("zania-theme")
+            const saved = window.localStorage.getItem("compliance-theme")
             return saved === "light" ? "light" : "dark"
         } catch {
             return "dark"
@@ -233,7 +233,7 @@ export default function ComplianceDashboard() {
         () => {
             if (typeof window === "undefined") return true
             try {
-                const saved = window.localStorage.getItem("zania-live-toasts")
+                const saved = window.localStorage.getItem("compliance-live-toasts")
                 return saved !== "off"
             } catch {
                 return true
@@ -245,7 +245,7 @@ export default function ComplianceDashboard() {
         liveToastsRef.current = liveToastsEnabled
         try {
             window.localStorage.setItem(
-                "zania-live-toasts",
+                "compliance-live-toasts",
                 liveToastsEnabled ? "on" : "off"
             )
         } catch {
@@ -306,7 +306,7 @@ export default function ComplianceDashboard() {
         setTheme((t) => {
             const next = t === "dark" ? "light" : "dark"
             try {
-                window.localStorage.setItem("zania-theme", next)
+                window.localStorage.setItem("compliance-theme", next)
             } catch {
                 // ignore (eg. private mode / Framer canvas)
             }

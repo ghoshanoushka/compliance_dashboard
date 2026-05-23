@@ -324,7 +324,7 @@ export function SettingsModal({
                                     hint="POST events to this endpoint when runs complete"
                                 >
                                     <Input
-                                        value="https://acme.example.com/zania-events"
+                                        value="https://acme.example.com/compliance-events"
                                         onChange={() => {}}
                                     />
                                 </Field>
