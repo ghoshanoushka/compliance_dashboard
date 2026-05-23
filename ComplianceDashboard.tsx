@@ -1,5 +1,4 @@
 import * as React from "react"
-import { addPropertyControls } from "framer"
 import {
     C,
     FONT,
@@ -25,7 +24,7 @@ import {
     type DropdownItem,
     relTime,
     formatElapsed,
-} from "https://framer.com/m/DashboardLib-1-xD05ae.js"
+} from "./DashboardLib_1"
 import {
     type CtlStatus,
     type Framework,
@@ -41,19 +40,19 @@ import {
     ACTIVITY_POOL,
     AGENT_SCRIPTS,
     getScript,
-} from "https://framer.com/m/DashboardData-6dyjDj.js"
-import { AddControlModal } from "https://framer.com/m/AddControlModal-PLACEHOLDER.js"
+} from "./DashboardData"
+import { AddControlModal } from "./AddControlModal"
 import {
     ExportModal,
     type ExportScope,
-} from "https://framer.com/m/ExportModal-PLACEHOLDER.js"
-import { SettingsModal } from "https://framer.com/m/SettingsModal-PLACEHOLDER.js"
-import { TrustCenterModal } from "https://framer.com/m/TrustCenterModal-PLACEHOLDER.js"
-import { ControlDetailPanel } from "https://framer.com/m/ControlDetailPanel-PLACEHOLDER.js"
+} from "./ExportModal"
+import { SettingsModal } from "./SettingsModal"
+import { TrustCenterModal } from "./TrustCenterModal"
+import { ControlDetailPanel } from "./ControlDetailPanel"
 import {
     AgentChat,
     type ChatMessage,
-} from "https://framer.com/m/AgentChat-PLACEHOLDER.js"
+} from "./AgentChat"
 
 // Captured once at module load · used as a stable anchor for "minutes ago"
 // fields so relTime() actually ticks forward as wall-clock time advances.
@@ -6267,5 +6266,3 @@ function SummaryStatBlock({
         </div>
     )
 }
-
-addPropertyControls(ComplianceDashboard, {})

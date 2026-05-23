@@ -1,5 +1,4 @@
 import * as React from "react"
-import { addPropertyControls } from "framer"
 import {
     C,
     FONT,
@@ -11,13 +10,13 @@ import {
     btnPrimary,
     btnSecondary,
     relTime,
-} from "https://framer.com/m/DashboardLib-1-xD05ae.js"
+} from "./DashboardLib_1"
 import {
     type Ctl,
     type CtlStatus,
     getSectionKey,
     SECTION_LABELS,
-} from "https://framer.com/m/DashboardData-6dyjDj.js"
+} from "./DashboardData"
 
 // ============ CONTROL DETAIL PANEL ============
 //
@@ -688,9 +687,3 @@ function Footer({
         </div>
     )
 }
-
-export default function ControlDetailPanelDefault() {
-    return null
-}
-
-addPropertyControls(ControlDetailPanelDefault, {})

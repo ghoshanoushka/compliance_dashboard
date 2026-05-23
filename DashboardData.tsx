@@ -1,5 +1,4 @@
 import * as React from "react"
-import { addPropertyControls } from "framer"
 
 // CtlStatus is duplicated here (not imported) for type-resolution simplicity.
 // Keep this in sync with DashboardLib's CtlStatus.
@@ -1022,5 +1021,3 @@ function DataStat({ label, value }: { label: string; value: number }) {
         </div>
     )
 }
-
-addPropertyControls(DashboardData, {})

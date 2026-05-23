@@ -1,15 +1,14 @@
 import * as React from "react"
-import { addPropertyControls } from "framer"
 import {
     C,
     FONT,
     MONO,
     Icon,
     relTime,
-} from "https://framer.com/m/DashboardLib-1-xD05ae.js"
+} from "./DashboardLib_1"
 import {
     type Activity,
-} from "https://framer.com/m/DashboardData-6dyjDj.js"
+} from "./DashboardData"
 
 // ============ AGENT CHAT ============
 //
@@ -423,9 +422,3 @@ function Bubble({
         </div>
     )
 }
-
-export default function AgentChatDefault() {
-    return null
-}
-
-addPropertyControls(AgentChatDefault, {})

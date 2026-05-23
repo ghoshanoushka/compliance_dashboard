@@ -1,5 +1,4 @@
 import * as React from "react"
-import { addPropertyControls } from "framer"
 import {
     C,
     FONT,
@@ -14,7 +13,7 @@ import {
     Spinner,
     btnPrimary,
     btnSecondary,
-} from "https://framer.com/m/DashboardLib-1-xD05ae.js"
+} from "./DashboardLib_1"
 
 // ============ EXPORT MODAL ============
 //
@@ -516,9 +515,3 @@ function Option({
         </div>
     )
 }
-
-export default function ExportModalDefault() {
-    return null
-}
-
-addPropertyControls(ExportModalDefault, {})

@@ -1,5 +1,4 @@
 import * as React from "react"
-import { addPropertyControls } from "framer"
 import {
     C,
     FONT,
@@ -12,11 +11,11 @@ import {
     ProgressBar,
     btnPrimary,
     btnSecondary,
-} from "https://framer.com/m/DashboardLib-1-xD05ae.js"
+} from "./DashboardLib_1"
 import {
     type Framework,
     FRAMEWORKS,
-} from "https://framer.com/m/DashboardData-6dyjDj.js"
+} from "./DashboardData"
 
 // ============ TRUST CENTER MODAL ============
 //
@@ -296,9 +295,3 @@ export function TrustCenterModal({
         </Modal>
     )
 }
-
-export default function TrustCenterModalDefault() {
-    return null
-}
-
-addPropertyControls(TrustCenterModalDefault, {})

@@ -1,5 +1,4 @@
 import * as React from "react"
-import { addPropertyControls } from "framer"
 
 // ============ DESIGN TOKENS ============
 //
@@ -1037,5 +1036,3 @@ export default function DashboardLib() {
         </div>
     )
 }
-
-addPropertyControls(DashboardLib, {})

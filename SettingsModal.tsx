@@ -1,5 +1,4 @@
 import * as React from "react"
-import { addPropertyControls } from "framer"
 import {
     C,
     FONT,
@@ -12,7 +11,7 @@ import {
     Checkbox,
     btnPrimary,
     btnSecondary,
-} from "https://framer.com/m/DashboardLib-1-xD05ae.js"
+} from "./DashboardLib_1"
 
 // ============ SETTINGS MODAL ============
 //
@@ -696,9 +695,3 @@ function IntegrationRow({
         </div>
     )
 }
-
-export default function SettingsModalDefault() {
-    return null
-}
-
-addPropertyControls(SettingsModalDefault, {})

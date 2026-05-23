@@ -1,5 +1,4 @@
 import * as React from "react"
-import { addPropertyControls } from "framer"
 import {
     C,
     FONT,
@@ -11,13 +10,13 @@ import {
     ModalFooter,
     btnPrimary,
     btnSecondary,
-} from "https://framer.com/m/DashboardLib-1-xD05ae.js"
+} from "./DashboardLib_1"
 import {
     type Ctl,
     type CtlStatus,
     type Framework,
     FRAMEWORKS,
-} from "https://framer.com/m/DashboardData-6dyjDj.js"
+} from "./DashboardData"
 
 // ============ ADD CONTROL MODAL ============
 //
@@ -315,9 +314,3 @@ function Select({
         </div>
     )
 }
-
-export default function AddControlModalDefault() {
-    return null
-}
-
-addPropertyControls(AddControlModalDefault, {})
