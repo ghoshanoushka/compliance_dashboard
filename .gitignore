@@ -30,3 +30,4 @@ yarn-error.log*
 
 # Claude local settings (keep launch.json shared, ignore personal)
 .claude/settings.local.json
+.preview/.claude/
