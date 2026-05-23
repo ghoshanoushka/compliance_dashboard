@@ -31,7 +31,10 @@ jobs:
 
       - name: Install
         working-directory: .preview
-        run: npm ci
+        # Using `npm install` instead of `npm ci` so npm resolves platform-specific
+        # optional dependencies (e.g. @rollup/rollup-linux-x64-gnu) that the
+        # macOS-generated lockfile omits. See npm/cli#4828.
+        run: npm install --no-audit --no-fund
 
       - name: Build
         working-directory: .preview
