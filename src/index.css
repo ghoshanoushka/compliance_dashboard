@@ -1,0 +1,209 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tokens for the Tailwind-styled vendor workspace. Scoped to the dashboard
+   theme classes so both halves of the app switch themes together. */
+.theme-light {
+    --radius: 0.625rem;
+
+    --background: 216 26% 95%; /* #EEF1F5 */
+    --foreground: 220 13% 9%; /* #14161A */
+    --card: 0 0% 100%;
+    --card-foreground: 220 13% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 13% 9%;
+    --primary: 22 80% 38%; /* #B04D14 accent */
+    --primary-foreground: 0 0% 100%;
+    --cta: 22 80% 38%; /* the one filled button per view */
+    --cta-foreground: 0 0% 100%;
+    --secondary: 216 20% 93%;
+    --secondary-foreground: 220 13% 18%;
+    --muted: 216 20% 93%;
+    --muted-foreground: 220 9% 40%;
+    --accent: 22 80% 38%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 2 66% 43%; /* #B42A25 */
+    --destructive-foreground: 0 0% 100%;
+    --success: 149 66% 25%; /* #166B3F */
+    --success-foreground: 0 0% 100%;
+    --warning: 35 93% 28%; /* #8A5205 */
+    --warning-foreground: 0 0% 100%;
+    --info: 220 9% 35%; /* neutral: "needs review" */
+    --info-foreground: 0 0% 100%;
+    --border: 216 16% 87%;
+    --input: 216 16% 87%;
+    --ring: 22 80% 38%;
+    --surface-hi: 0 0% 100%;
+    --surface-inset: 216 20% 92%;
+
+    color-scheme: light;
+}
+
+.theme-dark {
+    --radius: 0.625rem;
+
+    --background: 225 11% 6%; /* #0E0F12 graphite */
+    --foreground: 220 7% 93%; /* #ECEDEF */
+    --card: 225 9% 12%;
+    --card-foreground: 220 7% 93%;
+    --popover: 225 10% 14%;
+    --popover-foreground: 220 7% 93%;
+    --primary: 21 86% 58%; /* #F07A3A accent */
+    --primary-foreground: 24 60% 6%;
+    --cta: 0 0% 100%; /* white CTA, matching the dashboard */
+    --cta-foreground: 225 11% 6%;
+    --secondary: 225 8% 15%;
+    --secondary-foreground: 220 7% 93%;
+    --muted: 225 8% 15%;
+    --muted-foreground: 225 5% 62%;
+    --accent: 21 86% 58%;
+    --accent-foreground: 24 60% 6%;
+    --destructive: 0 86% 70%; /* #F47272 */
+    --destructive-foreground: 225 11% 6%;
+    --success: 150 53% 54%; /* #4CC98A */
+    --success-foreground: 225 11% 6%;
+    --warning: 47 77% 59%; /* #E8C547 */
+    --warning-foreground: 225 11% 6%;
+    --info: 220 9% 78%; /* neutral: "needs review" */
+    --info-foreground: 225 11% 6%;
+    --border: 225 8% 18%;
+    --input: 225 8% 18%;
+    --ring: 21 86% 58%;
+    --surface-hi: 225 9% 15%;
+    --surface-inset: 225 12% 5%;
+
+    color-scheme: dark;
+}
+
+/* Scoped stand-in for Tailwind preflight (disabled globally). Wrapped in
+   :where() so it carries zero specificity and utility classes always win. */
+:where(.ev-root, [data-radix-popper-content-wrapper]),
+:where(.ev-root, [data-radix-popper-content-wrapper]) :where(*, *::before, *::after) {
+    box-sizing: border-box;
+    border-width: 0;
+    border-style: solid;
+    border-color: hsl(var(--border));
+}
+:where(.ev-root, [data-radix-popper-content-wrapper]) {
+    font-family: "Inter var", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-synthesis: none;
+}
+:where(.ev-root, [data-radix-popper-content-wrapper]) :where(h1, h2, h3, h4, h5, h6, p, blockquote, figure, ul, ol) {
+    margin: 0;
+    padding: 0;
+    font-size: inherit;
+    font-weight: inherit;
+}
+:where(.ev-root, [data-radix-popper-content-wrapper]) :where(ul, ol) {
+    list-style: none;
+}
+:where(.ev-root, [data-radix-popper-content-wrapper]) :where(button, input, textarea, select) {
+    font: inherit;
+    color: inherit;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+}
+:where(.ev-root, [data-radix-popper-content-wrapper]) :where(button) {
+    cursor: pointer;
+}
+:where(.ev-root, [data-radix-popper-content-wrapper]) :where(img, svg, video) {
+    display: block;
+    max-width: 100%;
+}
+.ev-root ::selection {
+    background: hsl(var(--primary) / 0.22);
+}
+
+/* The vendor workspace paints with the dashboard's own glass tokens
+   (GlobalStyles --c-*), so both halves are one surface system: base panels,
+   raised layers (drawers, popovers), hover fills and recessed wells. */
+.ev-root .bg-card {
+    background-color: var(--c-surface);
+}
+.ev-root .bg-background {
+    background-color: transparent;
+}
+.ev-root .bg-\[hsl\(var\(--surface-hi\)\)\],
+.ev-root .hover\:bg-\[hsl\(var\(--surface-hi\)\)\]:hover {
+    background-color: var(--c-hover-overlay);
+}
+.ev-root .bg-\[hsl\(var\(--surface-inset\)\)\] {
+    background-color: var(--c-surface-sunken);
+}
+.bg-popover {
+    background-color: var(--c-surface-hi);
+}
+
+/* ---------------------------------------------------------------- Wins
+   See src/lib/celebrate.ts. Success color resolves from whichever theme
+   class sits on <html> (dashboard tokens) with a sane fallback. */
+.zwin-pop {
+    animation: zwinPop 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes zwinPop {
+    0% { transform: scale(1); }
+    30% { transform: scale(0.96); }
+    65% { transform: scale(1.035); }
+    100% { transform: scale(1); }
+}
+.zwin-burst {
+    position: fixed;
+    width: 0;
+    height: 0;
+    z-index: 1000;
+    pointer-events: none;
+    --win: var(--c-success, #6ccb9a);
+    --win-2: var(--c-accent, #93adeb);
+}
+.zwin-ring {
+    position: absolute;
+    left: calc(var(--w) / -2);
+    top: calc(var(--h) / -2);
+    width: var(--w);
+    height: var(--h);
+    border-radius: var(--radius);
+    border: 2px solid var(--win);
+    animation: zwinRing 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes zwinRing {
+    0% { opacity: 0.9; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.22, 1.6); }
+}
+.zwin-p {
+    position: absolute;
+    left: -3px;
+    top: -3px;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--win);
+    opacity: 0;
+    transform: rotate(var(--a)) translateX(0);
+    animation: zwinParticle 760ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.zwin-p-dash {
+    width: 10px;
+    height: 3px;
+    top: -1.5px;
+    left: -5px;
+    background: var(--win-2);
+}
+@keyframes zwinParticle {
+    0% { opacity: 1; transform: rotate(var(--a)) translateX(calc(var(--d) * 0.35)) scale(1); }
+    100% { opacity: 0; transform: rotate(var(--a)) translateX(var(--d)) scale(0.4); }
+}
+/* A check that draws itself in · used on success states. */
+.zwin-check path {
+    stroke-dasharray: 24;
+    stroke-dashoffset: 24;
+    animation: zwinDraw 420ms 120ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+@keyframes zwinDraw {
+    to { stroke-dashoffset: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .zwin-pop, .zwin-check path { animation: none; stroke-dashoffset: 0; }
+}

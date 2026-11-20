@@ -11,7 +11,8 @@ import {
     Checkbox,
     btnPrimary,
     btnSecondary,
-} from "./DashboardLib_1"
+    CopyButton,
+} from "./DashboardLib"
 
 // ============ SETTINGS MODAL ============
 //
@@ -69,11 +70,9 @@ const INTEGRATIONS = [
 export function SettingsModal({
     open,
     close,
-    onAction,
 }: {
     open: boolean
     close: () => void
-    onAction?: (label: string, note?: string) => void
 }) {
     const [tab, setTab] = React.useState<SettingsTab>("workspace")
     const [workspaceName, setWorkspaceName] = React.useState("Acme Corp")
@@ -251,7 +250,6 @@ export function SettingsModal({
                                     <IntegrationRow
                                         key={it.name}
                                         it={it}
-                                        onAction={onAction}
                                     />
                                 ))}
                             </div>
@@ -289,34 +287,9 @@ export function SettingsModal({
                                                 whiteSpace: "nowrap",
                                             }}
                                         >
-                                            zk_live_4f6c8d…a7e2
+                                            pl_live_4f6c8d…a7e2
                                         </div>
-                                        <button
-                                            type="button"
-                                            className="zbtn"
-                                            style={btnSecondary}
-                                            onClick={() =>
-                                                onAction?.(
-                                                    "API key",
-                                                    "copied to clipboard"
-                                                )
-                                            }
-                                        >
-                                            Copy
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="zbtn"
-                                            style={btnSecondary}
-                                            onClick={() =>
-                                                onAction?.(
-                                                    "API key",
-                                                    "regenerated · old key revoked"
-                                                )
-                                            }
-                                        >
-                                            Regenerate
-                                        </button>
+                                        <CopyButton text="pl_live_4f6c8d…a7e2" />
                                     </div>
                                 </Field>
                                 <Field
@@ -355,10 +328,7 @@ export function SettingsModal({
                     type="button"
                     className="zbtn"
                     style={btnPrimary}
-                    onClick={() => {
-                        onAction?.("Settings", "saved")
-                        close()
-                    }}
+                    onClick={close}
                 >
                     Save changes
                 </button>
@@ -390,10 +360,8 @@ function Field({
             >
                 <div
                     style={{
-                        font: `500 11px/14px ${FONT}`,
+                        font: `500 12px/16px ${FONT}`,
                         color: C.textMuted,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.04em",
                     }}
                 >
                     {label}
@@ -522,7 +490,7 @@ function Pill({
                     : muted
                       ? C.surface
                       : C.surface,
-                border: `1px solid ${active ? "rgba(124,92,255,0.45)" : C.border}`,
+                border: `1px solid ${active ? C.accentLine : C.border}`,
                 color: active
                     ? C.accentSoft
                     : muted
@@ -588,10 +556,8 @@ function ToggleRow({
 
 function IntegrationRow({
     it,
-    onAction,
 }: {
     it: { name: string; kind: string; status: string; last: string }
-    onAction?: (label: string, note?: string) => void
 }) {
     const statusStyle =
         it.status === "connected"
@@ -599,7 +565,6 @@ function IntegrationRow({
             : it.status === "needs review"
               ? { bg: C.warningBg, fg: C.warning, dot: C.warning }
               : { bg: C.surface, fg: C.textSubtle, dot: C.textSubtle }
-    const isConnected = it.status !== "disconnected"
     return (
         <div
             style={{
@@ -675,23 +640,6 @@ function IntegrationRow({
                     {it.status}
                 </div>
             </div>
-            <button
-                type="button"
-                className="zbtn"
-                style={{
-                    ...btnSecondary,
-                    padding: "6px 10px",
-                    font: `500 12px/16px ${FONT}`,
-                }}
-                onClick={() =>
-                    onAction?.(
-                        it.name,
-                        isConnected ? "reconfigured" : "connect started"
-                    )
-                }
-            >
-                {isConnected ? "Configure" : "Connect"}
-            </button>
         </div>
     )
 }

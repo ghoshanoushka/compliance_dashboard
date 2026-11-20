@@ -10,7 +10,7 @@ import {
     ModalFooter,
     btnPrimary,
     btnSecondary,
-} from "./DashboardLib_1"
+} from "./DashboardLib"
 import {
     type Ctl,
     type CtlStatus,
@@ -191,7 +191,7 @@ export function AddControlModal({
                     onClick={handleSubmit}
                     type="button"
                 >
-                    <Icon n="plus" s={12} c={C.bg} />
+                    <Icon n="plus" s={12} c={C.primaryFg} />
                     Add control
                 </button>
             </ModalFooter>
@@ -220,10 +220,8 @@ function Row({
         >
             <div
                 style={{
-                    font: `500 11px/14px ${FONT}`,
+                    font: `500 12px/16px ${FONT}`,
                     color: C.textMuted,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
                 }}
             >
                 {label}

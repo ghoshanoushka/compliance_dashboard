@@ -28,7 +28,6 @@ jobs:
           node-version: "20"
 
       - name: Install
-        working-directory: .preview
         # Delete the macOS-generated lockfile so npm resolves Linux platform
         # binaries (e.g. @rollup/rollup-linux-x64-gnu). See npm/cli#4828.
         run: |
@@ -36,7 +35,6 @@ jobs:
           npm install --no-audit --no-fund
 
       - name: Build
-        working-directory: .preview
         run: npm run build
 
       - name: Configure Pages
@@ -45,7 +43,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .preview/dist
+          path: dist
 
   deploy:
     needs: build

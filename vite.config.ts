@@ -7,10 +7,9 @@ import path from "node:path"
 export default defineConfig(({ command }) => ({
     base: command === "build" ? "/compliance_dashboard/" : "/",
     plugins: [react()],
-    server: {
-        fs: {
-            // Allow reading the parent directory where the source .tsx files live.
-            allow: [path.resolve(__dirname, "..")],
+    resolve: {
+        alias: {
+            "@": path.resolve(__dirname, "./src"),
         },
     },
 }))

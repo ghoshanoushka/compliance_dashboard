@@ -1,11 +1,9 @@
 # Dependencies
 node_modules/
-.preview/node_modules/
 
 # Build output
 dist/
 build/
-.preview/dist/
 
 # OS
 .DS_Store
@@ -30,4 +28,3 @@ yarn-error.log*
 
 # Claude local settings (keep launch.json shared, ignore personal)
 .claude/settings.local.json
-.preview/.claude/

@@ -1,4 +1,5 @@
 import * as React from "react"
+import wallpaper from "../assets/wallpaper-dunes.jpg"
 
 // ============ DESIGN TOKENS ============
 //
@@ -12,16 +13,31 @@ export const C = {
     surface: "var(--c-surface)",
     surfaceHi: "var(--c-surface-hi)",
     surfaceHover: "var(--c-surface-hover)",
+    // Recessed wells · inputs, modal footers, code blocks.
+    surfaceSunken: "var(--c-surface-sunken)",
     border: "var(--c-border)",
     borderHi: "var(--c-border-hi)",
+    glassEdge: "var(--c-glass-edge)",
+    // The app window's own frosted fill.
+    windowGlass: "var(--c-window-glass)",
     text: "var(--c-text)",
     textMuted: "var(--c-text-muted)",
     textSubtle: "var(--c-text-subtle)",
     accent: "var(--c-accent)",
     accentSoft: "var(--c-accent-soft)",
     accentBg: "var(--c-accent-bg)",
+    // Foreground for anything sitting on a solid accent fill.
+    accentFg: "var(--c-accent-fg)",
+    // Selection fill, border and wash. Deliberately neutral: orange is reserved
+    // for text, focus and the CTA, so selected chips never read as alerts.
+    accentLine: "var(--c-accent-line)",
+    accentTint: "var(--c-accent-tint)",
+    // The one high-emphasis CTA fill per view.
+    primary: "var(--c-primary)",
+    primaryFg: "var(--c-primary-fg)",
     success: "var(--c-success)",
     successBg: "var(--c-success-bg)",
+    successLine: "var(--c-success-line)",
     warning: "var(--c-warning)",
     warningBg: "var(--c-warning-bg)",
     danger: "var(--c-danger)",
@@ -30,56 +46,93 @@ export const C = {
     // the standard token set (hover overlays, track fills, ring shadows).
     hoverOverlay: "var(--c-hover-overlay)",
     trackFill: "var(--c-track-fill)",
+    scrim: "var(--c-scrim)",
+    shadowSm: "var(--c-shadow-sm)",
+    shadowLg: "var(--c-shadow-lg)",
 }
 
+// Neutral graphite (dark, default) and cool paper (light). Surfaces are glass:
+// translucent so the wallpaper tints through; GlobalStyles applies the blur
+// to anything painted with surface / surfaceHi. Orange marks interaction only.
 export const THEME = {
     dark: {
-        bg: "#0A0A0F",
-        surface: "#14141E",
-        surfaceHi: "#1A1A26",
-        surfaceHover: "#1E1E2A",
+        bg: "#0E0F12",
+        surface: "rgba(255,255,255,0.055)",
+        surfaceHi: "rgb(36,35,36)",
+        fieldFocus: "rgba(255,255,255,0.34)",
+        fieldHalo: "rgba(255,255,255,0.06)",
+        surfaceHover: "rgba(255,255,255,0.08)",
+        surfaceSunken: "rgba(0,0,0,0.24)",
         border: "rgba(255,255,255,0.08)",
         borderHi: "rgba(255,255,255,0.14)",
-        text: "#FFFFFF",
-        textMuted: "rgba(255,255,255,0.68)",
-        textSubtle: "rgba(255,255,255,0.42)",
-        accent: "#7C5CFF",
-        accentSoft: "#A084FF",
-        accentBg: "rgba(124,92,255,0.14)",
-        success: "#00D084",
-        successBg: "rgba(0,208,132,0.14)",
-        warning: "#FFB800",
-        warningBg: "rgba(255,184,0,0.14)",
-        danger: "#FF5C5C",
-        dangerBg: "rgba(255,92,92,0.14)",
-        hoverOverlay: "rgba(255,255,255,0.06)",
-        trackFill: "rgba(255,255,255,0.06)",
+        // 1px top highlight that sells the glass edge.
+        glassEdge: "rgba(255,255,255,0.06)",
+        windowGlass: "rgba(16,17,20,0.68)",
+        text: "#ECEDEF",
+        textMuted: "rgba(236,237,239,0.74)",
+        textSubtle: "rgba(236,237,239,0.62)",
+        accent: "#F07A3A",
+        accentSoft: "#F59A66",
+        accentBg: "rgba(255,255,255,0.09)",
+        accentFg: "#1A0E07",
+        accentLine: "rgba(255,255,255,0.26)",
+        accentTint: "rgba(255,255,255,0.035)",
+        primary: "#FFFFFF",
+        primaryFg: "#0E0F12",
+        success: "#4CC98A",
+        successBg: "rgba(76,201,138,0.14)",
+        successLine: "rgba(76,201,138,0.32)",
+        warning: "#E8C547",
+        warningBg: "rgba(232,197,71,0.14)",
+        danger: "#F47272",
+        dangerBg: "rgba(244,114,114,0.14)",
+        hoverOverlay: "rgba(255,255,255,0.05)",
+        trackFill: "rgba(255,255,255,0.08)",
+        scrim: "rgba(6,6,8,0.62)",
+        shadowSm: "0 1px 2px rgba(0,0,0,0.30)",
+        shadowLg: "0 24px 64px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.25)",
     },
     light: {
-        bg: "#F6F6F8",
-        surface: "#FFFFFF",
-        surfaceHi: "#FFFFFF",
-        surfaceHover: "#F0F0F4",
-        border: "rgba(10,10,15,0.10)",
-        borderHi: "rgba(10,10,15,0.18)",
-        text: "#0A0A0F",
-        textMuted: "rgba(10,10,15,0.68)",
-        textSubtle: "rgba(10,10,15,0.46)",
-        accent: "#6E45F0",
-        accentSoft: "#7C5CFF",
-        accentBg: "rgba(110,69,240,0.10)",
-        success: "#0A9A66",
-        successBg: "rgba(10,154,102,0.12)",
-        warning: "#B27200",
-        warningBg: "rgba(178,114,0,0.12)",
-        danger: "#D43A3A",
-        dangerBg: "rgba(212,58,58,0.10)",
-        hoverOverlay: "rgba(10,10,15,0.05)",
-        trackFill: "rgba(10,10,15,0.08)",
+        bg: "#EEF1F5",
+        surface: "rgba(255,255,255,0.60)",
+        surfaceHi: "rgb(252,252,251)",
+        fieldFocus: "rgba(15,23,42,0.36)",
+        fieldHalo: "rgba(15,23,42,0.06)",
+        surfaceHover: "rgba(241,243,247,0.85)",
+        surfaceSunken: "rgba(15,23,42,0.04)",
+        border: "rgba(15,23,42,0.09)",
+        borderHi: "rgba(15,23,42,0.16)",
+        glassEdge: "rgba(255,255,255,0.70)",
+        windowGlass: "rgba(248,248,247,0.82)",
+        text: "#14161A",
+        textMuted: "rgba(20,22,26,0.74)",
+        textSubtle: "rgba(20,22,26,0.62)",
+        accent: "#B04D14",
+        accentSoft: "#B04D14",
+        accentBg: "rgba(15,23,42,0.06)",
+        accentFg: "#FFFFFF",
+        accentLine: "rgba(15,23,42,0.26)",
+        accentTint: "rgba(15,23,42,0.025)",
+        primary: "#B04D14",
+        primaryFg: "#FFFFFF",
+        success: "#166B3F",
+        successBg: "rgba(22,107,63,0.10)",
+        successLine: "rgba(22,107,63,0.30)",
+        warning: "#8A5205",
+        warningBg: "rgba(138,82,5,0.11)",
+        danger: "#B42A25",
+        dangerBg: "rgba(180,42,37,0.09)",
+        hoverOverlay: "rgba(15,23,42,0.04)",
+        trackFill: "rgba(15,23,42,0.08)",
+        scrim: "rgba(20,20,24,0.30)",
+        shadowSm: "0 1px 2px rgba(15,23,42,0.06)",
+        shadowLg: "0 24px 64px rgba(15,23,42,0.16), 0 2px 8px rgba(15,23,42,0.06)",
     },
 }
 export const FONT =
     "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+// Display face · page titles and the wordmark only.
+export const SERIF = "Newsreader, 'Iowan Old Style', Georgia, serif"
 export const MONO =
     "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
 
@@ -114,9 +167,13 @@ export const I: Record<string, IconDef> = {
     dotsH: {
         d: "M5 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M19 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
     },
-    sparkle: {
-        d: "M16 18a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zM10 8a4 4 0 0 1 4 4a4 4 0 0 1 4 -4a4 4 0 0 1 -4 -4a4 4 0 0 1 -4 4z",
+    news: {
+        d: "M16 6h3a1 1 0 0 1 1 1v11a2 2 0 0 1 -4 0v-13a1 1 0 0 0 -1 -1h-10a1 1 0 0 0 -1 1v12a3 3 0 0 0 3 3h11 M8 8l4 0 M8 12l4 0 M8 16l4 0",
     },
+    hierarchy: {
+        d: "M12 5m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0 M5 19m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0 M19 19m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0 M6.5 17.5l5.5 -4.5l5.5 4.5 M12 7l0 6",
+    },
+    loader: { d: "M12 3a9 9 0 1 0 9 9" },
     house: {
         d: "M5 12l-2 0l9 -9l9 9l-2 0 M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7 M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6",
     },
@@ -274,6 +331,8 @@ export function StatusPill({
                 gap: 6,
                 padding: "3px 9px",
                 borderRadius: 999,
+                whiteSpace: "nowrap",
+                flexShrink: 0,
                 background: m.bg,
                 font: `500 11px/14px ${FONT}`,
                 color: m.fg,
@@ -291,6 +350,29 @@ export function StatusPill({
             />
             {m.label}
         </div>
+    )
+}
+
+// Copies text and confirms in place, so no toast is needed.
+export function CopyButton({ text }: { text: string }) {
+    const [copied, setCopied] = React.useState(false)
+    React.useEffect(() => {
+        if (!copied) return
+        const t = setTimeout(() => setCopied(false), 1600)
+        return () => clearTimeout(t)
+    }, [copied])
+    return (
+        <button
+            type="button"
+            className="zbtn"
+            style={{ ...btnSecondary, padding: "6px 10px", font: `500 12px/16px ${FONT}`, minWidth: 66, justifyContent: "center" }}
+            onClick={() => {
+                navigator.clipboard?.writeText(text).then(() => setCopied(true), () => {})
+            }}
+        >
+            {copied && <Icon n="check" s={11} c={C.success} />}
+            {copied ? "Copied" : "Copy"}
+        </button>
     )
 }
 
@@ -323,7 +405,8 @@ export function ProgressBar({
     height?: number
 }) {
     const pct = Math.max(0, Math.min(100, value))
-    const color = pct >= 85 ? C.success : pct >= 70 ? C.accentSoft : C.warning
+    // Status colors only · accent never encodes health.
+    const color = pct >= 85 ? C.success : pct >= 70 ? C.warning : C.danger
     return (
         <div
             style={{
@@ -386,13 +469,13 @@ export function Checkbox({
                 transition: "all 120ms",
             }}
         >
-            {checked && <Icon n="check" s={10} c="#FFFFFF" />}
+            {checked && <Icon n="check" s={10} c={C.accentFg} />}
             {indeterminate && !checked && (
                 <div
                     style={{
                         width: 8,
                         height: 2,
-                        background: "#FFFFFF",
+                        background: C.accentFg,
                         borderRadius: 1,
                     }}
                 />
@@ -419,12 +502,13 @@ export function FilterChip({
             style={{
                 padding: "5px 10px",
                 borderRadius: 6,
+                // color-mix, not hex-suffix alpha · callers pass CSS vars.
                 background: active
                     ? color
-                        ? color + "33"
+                        ? `color-mix(in srgb, ${color} 16%, transparent)`
                         : C.accentBg
                     : "transparent",
-                border: `1px solid ${active ? (color || C.accent) + "88" : C.border}`,
+                border: `1px solid ${active ? `color-mix(in srgb, ${color || C.accent} 45%, transparent)` : C.border}`,
                 cursor: "pointer",
                 font: `${active ? 600 : 500} 12px/16px ${FONT}`,
                 color: active ? color || C.accentSoft : C.textMuted,
@@ -432,9 +516,6 @@ export function FilterChip({
                 alignItems: "center",
                 gap: 6,
                 transition: "all 120ms",
-                boxShadow: active
-                    ? `inset 0 0 0 1px ${(color || C.accent) + "33"}`
-                    : "none",
             }}
         >
             {color && (
@@ -482,8 +563,6 @@ export function SortHeader({
                 gap: 4,
                 font: `${active ? 600 : 500} 11px/14px ${FONT}`,
                 color: active ? C.accentSoft : C.textSubtle,
-                letterSpacing: 0.3,
-                textTransform: "uppercase",
                 justifyContent: align === "right" ? "flex-end" : "flex-start",
                 width: "100%",
             }}
@@ -510,12 +589,13 @@ export const btnPrimary: React.CSSProperties = {
     alignItems: "center",
     gap: 8,
     padding: "8px 14px",
-    background: C.text,
-    color: C.bg,
+    background: C.primary,
+    color: C.primaryFg,
     border: "none",
     borderRadius: 8,
     cursor: "pointer",
     font: `600 13px/18px ${FONT}`,
+    boxShadow: C.shadowSm,
 }
 export const btnSecondary: React.CSSProperties = {
     display: "flex",
@@ -529,34 +609,121 @@ export const btnSecondary: React.CSSProperties = {
     font: `500 13px/18px ${FONT}`,
     color: C.text,
 }
-export const btnGhost: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "6px 10px",
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
+// Small label that names a group (KPI labels, nav groups, table headers).
+export const eyebrowStyle: React.CSSProperties = {
     font: `500 12px/16px ${FONT}`,
-    color: C.textMuted,
-    borderRadius: 6,
+    color: C.textSubtle,
 }
 
-export function navItemStyle(): React.CSSProperties {
-    return {
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "7px 10px",
-        borderRadius: 7,
-        background: "transparent",
-        border: "none",
-        cursor: "pointer",
-        font: `500 13px/18px ${FONT}`,
-        color: C.textMuted,
-        textAlign: "left",
-        width: "100%",
+// Glass panel shell shared by sections on every view.
+export const panelStyle: React.CSSProperties = {
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 12,
+    overflow: "hidden",
+}
+
+// ============ ACCORDION ============
+//
+// Folds secondary information behind a one-line summary so the screen reads
+// in order of operations. Open state persists per `id`.
+export function Accordion({
+    id,
+    title,
+    summary,
+    right,
+    defaultOpen = false,
+    children,
+}: {
+    id: string
+    title: string
+    summary?: React.ReactNode
+    right?: React.ReactNode
+    defaultOpen?: boolean
+    children: React.ReactNode
+}) {
+    const key = `acc-${id}`
+    const [open, setOpen] = React.useState<boolean>(() => {
+        try {
+            const v = window.localStorage.getItem(key)
+            return v === null ? defaultOpen : v === "1"
+        } catch {
+            return defaultOpen
+        }
+    })
+    const toggle = () => {
+        setOpen((o) => {
+            try {
+                window.localStorage.setItem(key, o ? "0" : "1")
+            } catch {
+                // ignore (private mode)
+            }
+            return !o
+        })
     }
+    const bodyId = `${key}-body`
+    return (
+        <section style={panelStyle}>
+            <div style={{ display: "flex", alignItems: "center" }}>
+                <button
+                    onClick={toggle}
+                    aria-expanded={open}
+                    aria-controls={bodyId}
+                    className="znav"
+                    style={{
+                        flex: 1,
+                        minWidth: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "14px 18px",
+                        background: "transparent",
+                        border: "none",
+                        borderRadius: 0,
+                        cursor: "pointer",
+                        textAlign: "left",
+                        color: C.text,
+                    }}
+                >
+                    <span
+                        style={{
+                            display: "flex",
+                            transform: open ? "rotate(90deg)" : "rotate(0deg)",
+                            transition: "transform 200ms cubic-bezier(0.16, 1, 0.3, 1)",
+                        }}
+                    >
+                        <Icon n="caretRight" s={13} c={C.textSubtle} />
+                    </span>
+                    <span style={{ font: `600 14px/20px ${FONT}`, color: C.text }}>
+                        {title}
+                    </span>
+                    {summary && (
+                        <span
+                            style={{
+                                font: `400 12.5px/18px ${FONT}`,
+                                color: C.textSubtle,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                            }}
+                        >
+                            {summary}
+                        </span>
+                    )}
+                </button>
+                {right && (
+                    <div style={{ paddingRight: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                        {right}
+                    </div>
+                )}
+            </div>
+            <div className="zfold" data-open={open} id={bodyId}>
+                <div>
+                    <div style={{ borderTop: `1px solid ${C.border}` }}>{children}</div>
+                </div>
+            </div>
+        </section>
+    )
 }
 
 // ============ MODAL PRIMITIVES ============
@@ -579,8 +746,7 @@ export function Modal({
             style={{
                 position: "absolute",
                 inset: 0,
-                background: "rgba(0,0,0,0.6)",
-                backdropFilter: "blur(4px)",
+                background: C.scrim,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -596,7 +762,7 @@ export function Modal({
                     background: C.surfaceHi,
                     border: `1px solid ${C.borderHi}`,
                     borderRadius: 16,
-                    boxShadow: "0 30px 80px rgba(0,0,0,0.5)",
+                    boxShadow: C.shadowLg,
                     display: "flex",
                     flexDirection: "column",
                     overflow: "hidden",
@@ -640,16 +806,14 @@ export function ModalHeader({
                         width: 38,
                         height: 38,
                         borderRadius: 10,
-                        background:
-                            iconBg ??
-                            `linear-gradient(135deg, ${C.accent}, ${C.accentSoft})`,
+                        background: iconBg ?? C.accentBg,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         flexShrink: 0,
                     }}
                 >
-                    <Icon n={icon} s={18} c={iconColor ?? C.text} />
+                    <Icon n={icon} s={18} c={iconColor ?? C.accentSoft} />
                 </div>
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -726,7 +890,7 @@ export function ModalFooter({ children }: { children: React.ReactNode }) {
                 justifyContent: "flex-end",
                 gap: 8,
                 flexShrink: 0,
-                background: "rgba(0,0,0,0.15)",
+                background: C.surfaceSunken,
             }}
         >
             {children}
@@ -780,7 +944,7 @@ export function DropdownMenu({
                     borderRadius: 10,
                     padding: 4,
                     zIndex: 31,
-                    boxShadow: "0 12px 32px rgba(0,0,0,0.4)",
+                    boxShadow: C.shadowLg,
                     animation: "zfade 140ms ease",
                 }}
             >
@@ -863,7 +1027,7 @@ export function DropdownMenu({
                             {item.right && (
                                 <div
                                     style={{
-                                        font: `400 11px/14px ${MONO}`,
+                                        font: `400 11px/14px ${FONT}`,
                                         color: C.textSubtle,
                                     }}
                                 >
@@ -891,28 +1055,11 @@ export function DropdownMenu({
 export function GlobalStyles() {
     const dark = THEME.dark
     const light = THEME.light
-    const paletteVars = (p: typeof THEME.dark) => `
-        --c-bg: ${p.bg};
-        --c-surface: ${p.surface};
-        --c-surface-hi: ${p.surfaceHi};
-        --c-surface-hover: ${p.surfaceHover};
-        --c-border: ${p.border};
-        --c-border-hi: ${p.borderHi};
-        --c-text: ${p.text};
-        --c-text-muted: ${p.textMuted};
-        --c-text-subtle: ${p.textSubtle};
-        --c-accent: ${p.accent};
-        --c-accent-soft: ${p.accentSoft};
-        --c-accent-bg: ${p.accentBg};
-        --c-success: ${p.success};
-        --c-success-bg: ${p.successBg};
-        --c-warning: ${p.warning};
-        --c-warning-bg: ${p.warningBg};
-        --c-danger: ${p.danger};
-        --c-danger-bg: ${p.dangerBg};
-        --c-hover-overlay: ${p.hoverOverlay};
-        --c-track-fill: ${p.trackFill};
-    `
+    // camelCase palette key → --c-kebab-case var, so C and THEME never drift.
+    const paletteVars = (p: typeof THEME.dark) =>
+        Object.entries(p)
+            .map(([k, v]) => `--c-${k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase())}: ${v};`)
+            .join("\n")
     return (
         <style>{`
             :root, .theme-dark { ${paletteVars(dark)} }
@@ -922,31 +1069,79 @@ export function GlobalStyles() {
             @keyframes zfade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
             @keyframes zslide { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
             @keyframes zflash {
-                0% { background: rgba(124,92,255,0.22); box-shadow: inset 3px 0 0 ${C.accentSoft}; }
-                35% { background: rgba(124,92,255,0.14); box-shadow: inset 3px 0 0 ${C.accentSoft}; }
+                0% { background: ${C.accentBg}; box-shadow: inset 3px 0 0 ${C.accentSoft}; }
+                35% { background: ${C.accentTint}; box-shadow: inset 3px 0 0 ${C.accentSoft}; }
                 100% { background: transparent; box-shadow: inset 3px 0 0 transparent; }
             }
-            @keyframes ztoast {
-                0% { transform: translateX(120%); opacity: 0; }
-                6% { transform: translateX(0); opacity: 1; }
-                90% { transform: translateX(0); opacity: 1; }
-                100% { transform: translateX(120%); opacity: 0; }
-            }
             @keyframes zbump { 0%, 100% { transform: scale(1); } 30% { transform: scale(1.06); color: ${C.accentSoft}; } }
-            @keyframes zlivepulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(0,208,132,0.4); } 50% { box-shadow: 0 0 0 4px rgba(0,208,132,0); } }
+            @keyframes zlivepulse { 0%, 100% { box-shadow: 0 0 0 0 ${C.successLine}; } 50% { box-shadow: 0 0 0 4px transparent; } }
             @keyframes zbarSlide { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
             @keyframes zpanelIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
             @keyframes zstepReveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
             @keyframes zcaret { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
             @keyframes zviewIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+            .theme-dark, .theme-light { font-variant-numeric: tabular-nums; font-feature-settings: "cv11", "ss01"; -webkit-font-smoothing: antialiased; }
+            .theme-dark { color-scheme: dark; }
+            .theme-light { color-scheme: light; }
+            .theme-dark ::selection, .theme-light ::selection { background: var(--c-accent-bg); }
+            :is(.theme-dark, .theme-light) :is(button, a, select, [tabindex]):focus-visible {
+                outline: 2px solid var(--c-accent); outline-offset: 2px;
+            }
+            /* Text fields never get the ring. A bordered field brightens its own
+               border; a bare input (.zinp) inside a box lights the box (.zfocus). */
+            :is(.theme-dark, .theme-light) :is(input, textarea):focus { outline: none; }
+            :is(.theme-dark, .theme-light) :is(input, textarea):not(.zinp):not([type="checkbox"]):focus,
+            .zfocus:focus-within {
+                border-color: var(--c-field-focus) !important;
+                box-shadow: 0 0 0 3px var(--c-field-halo);
+            }
+            /* Frosted glass. Only the window itself blurs the wallpaper: a
+               backdrop-filter nested inside it can't see past the window, so it
+               would paint a dark slab instead of frost. Panels are a light tint
+               over the window's frost; raised layers (menus, modals, drawers)
+               are near-opaque so nothing underneath reads through. */
+            [style*="background: var(--c-surface);"] {
+                box-shadow: inset 0 1px 0 var(--c-glass-edge);
+            }
+            .zdesk { padding: 32px 44px; }
+            .zwindow {
+                border-radius: 14px;
+                -webkit-backdrop-filter: blur(40px) saturate(160%);
+                backdrop-filter: blur(40px) saturate(160%);
+            }
+            @media (max-width: 900px) {
+                .zdesk { padding: 0; }
+                .zwindow { border-radius: 0; border: none !important; }
+            }
+            .zpalette { animation: zpaletteIn 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+            @keyframes zpaletteIn { from { opacity: 0; transform: translateY(-6px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+            .zbackdrop { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+            /* Desktop wallpaper: "Rolling sand dunes" by Wolfgang Hasselmann
+               (Unsplash License). A tint keeps glass and text legible. */
+            .theme-dark .zbackdrop {
+                background:
+                    linear-gradient(180deg, rgba(10,9,8,0.42), rgba(10,9,8,0.58)),
+                    url(${wallpaper}) center 60% / cover no-repeat;
+            }
+            .theme-light .zbackdrop {
+                background:
+                    linear-gradient(180deg, rgba(255,250,245,0.10), rgba(255,250,245,0.18)),
+                    url(${wallpaper}) center 60% / cover no-repeat;
+            }
+            .zfold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease; }
+            .zfold > * { overflow: hidden; min-height: 0; }
+            .zfold[data-open="false"] { grid-template-rows: 0fr; opacity: 0; }
+            .zkpi + .zkpi { box-shadow: inset 1px 0 0 var(--c-border); }
             .zrow:hover { background: var(--c-hover-overlay); }
             .znav:hover { background: var(--c-hover-overlay); }
-            .zbtn:hover { filter: brightness(1.08); }
+            .zbtn { transition: background 120ms ease, border-color 120ms ease, color 120ms ease, filter 120ms ease, transform 120ms ease; }
+            .zbtn:hover { filter: brightness(1.06); }
+            .zbtn:active { transform: translateY(0.5px); }
+            .zbtn-primary { box-shadow: var(--c-shadow-sm); }
+            .zbtn-primary:hover { filter: brightness(1.08); }
             .zicon:hover { background: var(--c-hover-overlay); }
-            .zinp:focus { outline: none; }
             .zflash-row { animation: zflash 2500ms ease-out; }
             .zslide-row { animation: zslide 320ms ease-out; }
-            .ztoast { animation: ztoast 4500ms ease-out forwards; }
             .zbump-text { animation: zbump 600ms ease-out; display: inline-block; }
             .zlive-dot { animation: zpulse 1.6s ease-in-out infinite, zlivepulse 1.6s ease-in-out infinite; }
             .zbar-slide { animation: zbarSlide 240ms ease-out; }
@@ -956,83 +1151,11 @@ export function GlobalStyles() {
             .zview-in { animation: zviewIn 260ms cubic-bezier(0.16, 1, 0.3, 1); }
             .zfw-card { transition: transform 160ms ease, border-color 160ms ease, background 160ms ease; }
             .zfw-card:hover { transform: translateY(-2px); border-color: var(--c-border-hi); background: ${C.surfaceHi}; }
-            .zfield { background: ${C.bg}; border: 1px solid ${C.border}; border-radius: 8px; padding: 9px 12px; font: 400 13px/18px ${FONT}; color: ${C.text}; outline: none; transition: border-color 120ms; width: 100%; box-sizing: border-box; }
-            .zfield:focus { border-color: ${C.accent}; }
-            .zfield::placeholder { color: ${C.textSubtle}; }
+            @media (prefers-reduced-motion: reduce) {
+                :is(.theme-dark, .theme-light) *, :is(.theme-dark, .theme-light) *::before, :is(.theme-dark, .theme-light) *::after {
+                    animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important;
+                }
+            }
         `}</style>
-    )
-}
-
-// ============ DEFAULT EXPORT (preview only) ============
-
-export default function DashboardLib() {
-    return (
-        <div
-            style={{
-                padding: 28,
-                background: C.bg,
-                color: C.text,
-                font: `400 14px/22px ${FONT}`,
-                height: "100%",
-                boxSizing: "border-box",
-            }}
-        >
-            <GlobalStyles />
-            <div
-                style={{
-                    font: `600 18px/24px ${FONT}`,
-                    letterSpacing: "-0.015em",
-                    marginBottom: 6,
-                }}
-            >
-                Dashboard Library
-            </div>
-            <div style={{ color: C.textMuted, marginBottom: 24 }}>
-                Shared design tokens, icons, and primitives. Import named
-                exports from this file.
-            </div>
-            <div
-                style={{
-                    display: "flex",
-                    gap: 8,
-                    marginBottom: 16,
-                    flexWrap: "wrap",
-                }}
-            >
-                <StatusPill s="passing" />
-                <StatusPill s="review" />
-                <StatusPill s="gap" />
-                <StatusPill s="running" />
-                <StatusPill s="paused" />
-            </div>
-            <div style={{ marginBottom: 16 }}>
-                <ProgressBar value={72} />
-            </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {Object.keys(I)
-                    .slice(0, 12)
-                    .map((k) => (
-                        <div
-                            key={k}
-                            style={{
-                                width: 32,
-                                height: 32,
-                                borderRadius: 6,
-                                background: C.surface,
-                                border: `1px solid ${C.border}`,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                            }}
-                        >
-                            <Icon
-                                n={k as keyof typeof I}
-                                s={14}
-                                c={C.textMuted}
-                            />
-                        </div>
-                    ))}
-            </div>
-        </div>
     )
 }

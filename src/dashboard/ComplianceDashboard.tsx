@@ -3,6 +3,7 @@ import {
     C,
     FONT,
     MONO,
+    SERIF,
     Icon,
     I,
     StatusPill,
@@ -13,9 +14,10 @@ import {
     SortHeader,
     btnPrimary,
     btnSecondary,
-    btnGhost,
-    navItemStyle,
     GlobalStyles,
+    Accordion,
+    panelStyle,
+    eyebrowStyle,
     Modal,
     ModalHeader,
     ModalBody,
@@ -24,7 +26,7 @@ import {
     type DropdownItem,
     relTime,
     formatElapsed,
-} from "./DashboardLib_1"
+} from "./DashboardLib"
 import {
     type CtlStatus,
     type Framework,
@@ -38,7 +40,6 @@ import {
     CONTROLS,
     ACTIVITY_SEED,
     ACTIVITY_POOL,
-    AGENT_SCRIPTS,
     getScript,
 } from "./DashboardData"
 import { AddControlModal } from "./AddControlModal"
@@ -53,6 +54,10 @@ import {
     AgentChat,
     type ChatMessage,
 } from "./AgentChat"
+import { VendorsView } from "../vendors/VendorsView"
+import { CommandPalette, Kbd, type PaletteItem } from "./CommandPalette"
+import { EvidenceView, PoliciesView, RisksView, AgentsView, ShortcutsModal, SignedOut, usePersistentState } from "./AppViews"
+import { celebrate, useWinOnFinish } from "../lib/celebrate"
 
 // Captured once at module load · used as a stable anchor for "minutes ago"
 // fields so relTime() actually ticks forward as wall-clock time advances.
@@ -61,7 +66,7 @@ const PAGE_LOAD_MS = Date.now()
 // "Jan 12, 2027" → "Jan 12, 2027 · in 1 year 2 months". "Continuous" passes
 // through. Anything that doesn't parse is returned verbatim.
 function formatRenewal(raw: string): string {
-    if (!raw || /continuous/i.test(raw)) return raw || "—"
+    if (!raw || /continuous/i.test(raw)) return raw || "-"
     const target = new Date(raw)
     if (Number.isNaN(target.getTime())) return raw
     const days = Math.round((target.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
@@ -75,15 +80,43 @@ function formatRenewal(raw: string): string {
     return `${raw} · in ${years} year${years === 1 ? "" : "s"}${remMonths > 0 ? ` ${remMonths} mo` : ""}`
 }
 
-const NAV = [
-    { id: "dashboard", label: "Dashboard", icon: "house" as const },
-    { id: "frameworks", label: "Frameworks", icon: "shield" as const },
-    { id: "controls", label: "Controls", icon: "listChecks" as const },
-    { id: "evidence", label: "Evidence", icon: "fileText" as const },
-    { id: "risks", label: "Risks", icon: "warning" as const },
-    { id: "vendors", label: "Vendors", icon: "globe" as const },
-    { id: "policies", label: "Policies", icon: "book" as const },
-    { id: "agents", label: "Agents", icon: "robot" as const },
+type NavItem = { id: string; label: string; icon: keyof typeof I }
+type NavGroup = { id: string; label?: string; items: NavItem[] }
+
+// Grouped by the job the user is doing. Labelled groups fold; the group
+// holding the active view is always open.
+const NAV_GROUPS: NavGroup[] = [
+    { id: "home", items: [{ id: "dashboard", label: "Overview", icon: "house" }] },
+    {
+        id: "compliance",
+        label: "Compliance",
+        items: [
+            { id: "frameworks", label: "Frameworks", icon: "shield" },
+            { id: "controls", label: "Controls", icon: "listChecks" },
+            { id: "evidence", label: "Evidence", icon: "fileText" },
+            { id: "policies", label: "Policies", icon: "book" },
+        ],
+    },
+    {
+        id: "risk",
+        label: "Risk",
+        items: [
+            { id: "risks", label: "Risk register", icon: "warning" },
+            { id: "vendors", label: "Vendors", icon: "globe" },
+        ],
+    },
+    {
+        id: "automation",
+        label: "Automation",
+        items: [{ id: "agents", label: "Agents", icon: "robot" }],
+    },
+]
+
+// Workspaces the signed-in user belongs to. Switching changes the name in the
+// sidebar and title bar; the sandbox shares the same demo data.
+const WORKSPACES = [
+    { id: "acme", name: "Acme Corp", env: "Production" },
+    { id: "acme-sandbox", name: "Acme Sandbox", env: "Sandbox · test data" },
 ]
 
 // Time-range filter configuration.
@@ -142,18 +175,38 @@ const RANGE_CONFIG: Record<
 
 export default function ComplianceDashboard() {
     const [activeNav, setActiveNav] = React.useState("dashboard")
+    // Filter text for the Controls table (set by its own search field and by
+    // drill-downs). Global search lives in the ⌘K palette.
     const [searchQuery, setSearchQuery] = React.useState("")
-    const searchInputRef = React.useRef<HTMLInputElement | null>(null)
-    // Global ⌘K / Ctrl+K focuses the topbar search. Esc blurs.
+    const [showPalette, setShowPalette] = React.useState(false)
+    const [showShortcuts, setShowShortcuts] = React.useState(false)
+    const [signedOut, setSignedOut] = React.useState(false)
+    const [workspaceId, setWorkspaceId] = React.useState(() => {
+        try {
+            return window.localStorage.getItem("compliance-workspace") ?? "acme"
+        } catch {
+            return "acme"
+        }
+    })
+    const workspace = WORKSPACES.find((w) => w.id === workspaceId) ?? WORKSPACES[0]
+    const switchWorkspace = (id: string) => {
+        setWorkspaceId(id)
+        try {
+            window.localStorage.setItem("compliance-workspace", id)
+        } catch {
+            // ignore (eg. private mode)
+        }
+    }
+    // Global shortcuts: ⌘K toggles search, ⌘/ shows the shortcut sheet.
     React.useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+            if (!(e.metaKey || e.ctrlKey)) return
+            if (e.key.toLowerCase() === "k") {
                 e.preventDefault()
-                searchInputRef.current?.focus()
-                searchInputRef.current?.select()
-            }
-            if (e.key === "Escape" && document.activeElement === searchInputRef.current) {
-                searchInputRef.current?.blur()
+                setShowPalette((v) => !v)
+            } else if (e.key === "/") {
+                e.preventDefault()
+                setShowShortcuts((v) => !v)
             }
         }
         window.addEventListener("keydown", onKey)
@@ -163,11 +216,11 @@ export default function ComplianceDashboard() {
     const [runningTests, setRunningTests] = React.useState<Set<string>>(
         new Set()
     )
-    const [tick, setTick] = React.useState(0)
+    const [, setTick] = React.useState(0)
     const [showNotif, setShowNotif] = React.useState(false)
     // Number of new notifications since last opening the panel. The bell
     // badge shows this count; opening the panel resets it to zero.
-    const TOTAL_NOTIFICATIONS = 3
+    const TOTAL_NOTIFICATIONS = 2
     const [notifUnread, setNotifUnread] = React.useState(TOTAL_NOTIFICATIONS)
     const openNotif = React.useCallback(() => {
         setShowNotif((open) => {
@@ -188,9 +241,10 @@ export default function ComplianceDashboard() {
 
     const [activityLog, setActivityLog] =
         React.useState<Activity[]>(ACTIVITY_SEED)
-    const [controlOverrides, setControlOverrides] = React.useState<
+    // Control changes persist on this device, so the app picks up where you left it.
+    const [controlOverrides, setControlOverrides] = usePersistentState<
         Record<string, CtlStatus>
-    >({})
+    >("app-control-status", {})
     // Per-control lastTestMin overrides, set by the auto-resolver when it
     // flips a control to "passing" so the displayed timestamp staggers
     // instead of clustering on identical "Xm ago" values.
@@ -204,20 +258,14 @@ export default function ComplianceDashboard() {
         React.useState(EVIDENCE_BASELINE)
     const evidenceLiveDrift = evidenceCount - EVIDENCE_BASELINE
     const [evidenceBump, setEvidenceBump] = React.useState(0)
-    const [toasts, setToasts] = React.useState<
-        Array<{
-            id: string
-            agent: string
-            controlId: string
-            action: string
-            note?: string
-        }>
-    >([])
-    const [addedControls, setAddedControls] = React.useState<Ctl[]>([])
+    const [addedControls, setAddedControls] = usePersistentState<Ctl[]>("app-added-controls", [])
     const [showAddControl, setShowAddControl] = React.useState(false)
     const [exportScope, setExportScope] = React.useState<ExportScope | null>(
         null
     )
+    // True while a vendor workspace is open · it lays out edge-to-edge and
+    // scrolls internally, so the content area drops its padding and scroll.
+    const [vendorWorkspaceOpen, setVendorWorkspaceOpen] = React.useState(false)
     const [theme, setTheme] = React.useState<"dark" | "light">(() => {
         if (typeof window === "undefined") return "dark"
         try {
@@ -227,40 +275,9 @@ export default function ComplianceDashboard() {
             return "dark"
         }
     })
-    // Whether background auto-resolver fires toasts. User-action toasts
-    // (Add control, Export complete, Assessment complete) are unaffected.
-    const [liveToastsEnabled, setLiveToastsEnabled] = React.useState<boolean>(
-        () => {
-            if (typeof window === "undefined") return true
-            try {
-                const saved = window.localStorage.getItem("compliance-live-toasts")
-                return saved !== "off"
-            } catch {
-                return true
-            }
-        }
-    )
-    const liveToastsRef = React.useRef(liveToastsEnabled)
-    React.useEffect(() => {
-        liveToastsRef.current = liveToastsEnabled
-        try {
-            window.localStorage.setItem(
-                "compliance-live-toasts",
-                liveToastsEnabled ? "on" : "off"
-            )
-        } catch {
-            // ignore
-        }
-    }, [liveToastsEnabled])
-    const toggleLiveToasts = React.useCallback(
-        () => setLiveToastsEnabled((v) => !v),
-        []
-    )
-
     // Dropdown + modal flags for the sidebar and topbar surfaces.
     const [showWorkspaceMenu, setShowWorkspaceMenu] = React.useState(false)
     const [showUserMenu, setShowUserMenu] = React.useState(false)
-    const [showTopMenu, setShowTopMenu] = React.useState(false)
     const [showSettings, setShowSettings] = React.useState(false)
     const [showTrustCenter, setShowTrustCenter] = React.useState(false)
 
@@ -269,9 +286,6 @@ export default function ComplianceDashboard() {
     // reset to null in onSeedConsumed so the same value can fire again.
     const [controlsSeedStatus, setControlsSeedStatus] =
         React.useState<CtlStatus | null>(null)
-    const [controlsSeedSearch, setControlsSeedSearch] = React.useState<
-        string | null
-    >(null)
     const [selectedControlId, setSelectedControlId] = React.useState<
         string | null
     >(null)
@@ -296,42 +310,40 @@ export default function ComplianceDashboard() {
     const drillToControls = React.useCallback(
         (status: CtlStatus | null, searchTerm: string | null = null) => {
             setControlsSeedStatus(status)
-            setControlsSeedSearch(searchTerm)
             if (searchTerm !== null) setSearchQuery(searchTerm)
             setActiveNav("controls")
         },
         []
     )
+    // Mirror the theme class onto <html> so portalled popovers (rendered
+    // outside this root) resolve the same tokens.
+    React.useEffect(() => {
+        const root = document.documentElement
+        root.classList.toggle("theme-light", theme === "light")
+        root.classList.toggle("theme-dark", theme !== "light")
+    }, [theme])
     const toggleTheme = React.useCallback(() => {
         setTheme((t) => {
             const next = t === "dark" ? "light" : "dark"
             try {
                 window.localStorage.setItem("compliance-theme", next)
             } catch {
-                // ignore (eg. private mode / Framer canvas)
+                // ignore (eg. private mode)
             }
             return next
         })
     }, [])
 
-    const pushToast = React.useCallback(
-        (t: {
-            agent: string
-            controlId: string
-            action: string
-            note?: string
-        }) => {
-            const id = `toast-${Date.now()}-${Math.random()
-                .toString(36)
-                .slice(2, 6)}`
-            setToasts((prev) => [...prev, { id, ...t }].slice(-3))
-            setTimeout(
-                () => setToasts((prev) => prev.filter((x) => x.id !== id)),
-                4500
-            )
-        },
-        []
-    )
+    // Manual run from the Agents page: shows as running, completes after a few seconds.
+    const runAgent = (agent: string) => {
+        const id = `manual-${Date.now()}`
+        setActivityLog((prev) =>
+            [{ id, agent, action: "ran a manual check on", target: "its full scope", status: "running" as const, createdAt: Date.now() }, ...prev].slice(0, 8)
+        )
+        setTimeout(() => {
+            setActivityLog((prev) => prev.map((a) => (a.id === id ? { ...a, status: "complete" as const, createdAt: Date.now() } : a)))
+        }, 6000)
+    }
 
     const overridesRef = React.useRef(controlOverrides)
     React.useEffect(() => {
@@ -348,35 +360,19 @@ export default function ComplianceDashboard() {
         const inject = () => {
             const template = ACTIVITY_POOL[i % ACTIVITY_POOL.length]
             i++
+            // Agents paused on the Agents page don't run in the background.
+            try {
+                const paused: string[] = JSON.parse(window.localStorage.getItem("app-agents-paused") ?? "[]")
+                if (paused.includes(template.agent)) return
+            } catch {
+                // ignore (eg. private mode)
+            }
             const activity = {
                 ...template,
                 id: `live-${Date.now()}-${i}`,
                 createdAt: Date.now(),
             }
             setActivityLog((prev) => [activity, ...prev].slice(0, 8))
-            // Mirror the activity into a toast so users see ongoing live
-            // notifications even after the resolver hits its gap floor.
-            if (liveToastsRef.current) {
-                const toastId = `live-toast-${Date.now()}-${i}`
-                setToasts((prev) =>
-                    [
-                        ...prev,
-                        {
-                            id: toastId,
-                            agent: activity.agent,
-                            controlId: activity.target,
-                            action: activity.action,
-                        },
-                    ].slice(-3)
-                )
-                setTimeout(
-                    () =>
-                        setToasts((prev) =>
-                            prev.filter((t) => t.id !== toastId)
-                        ),
-                    4500
-                )
-            }
         }
         const first = setTimeout(inject, 9000)
         const interval = setInterval(inject, 28000)
@@ -431,27 +427,6 @@ export default function ComplianceDashboard() {
                     ...prev,
                 ].slice(0, 8)
             )
-            if (liveToastsRef.current) {
-                const toastId = `toast-${Date.now()}`
-                setToasts((prev) =>
-                    [
-                        ...prev,
-                        {
-                            id: toastId,
-                            agent: "Controls Agent",
-                            controlId: target.id,
-                            action: wasGap ? "resolved gap in" : "validated",
-                        },
-                    ].slice(-3)
-                )
-                setTimeout(
-                    () =>
-                        setToasts((prev) =>
-                            prev.filter((t) => t.id !== toastId)
-                        ),
-                    4500
-                )
-            }
         }
         const first = setTimeout(resolve, 6000)
         const interval = setInterval(resolve, 20000)
@@ -594,23 +569,141 @@ export default function ComplianceDashboard() {
         }
     }, [controlOverrides, basePassing, baseGaps, totalControls])
 
+    const paletteItems = React.useMemo<PaletteItem[]>(() => {
+        const go = (id: string) => {
+            setSelectedFramework(null)
+            setActiveNav(id)
+        }
+        const statusLabel: Record<CtlStatus, string> = {
+            passing: "Passing",
+            review: "In review",
+            gap: "Gap",
+        }
+        return [
+            { id: "act-assess", group: "Actions", label: "New assessment", icon: "plus", run: () => setNewAssessment(true) },
+            { id: "act-control", group: "Actions", label: "Add control", icon: "plus", run: () => setShowAddControl(true) },
+            {
+                id: "act-export",
+                group: "Actions",
+                label: "Export report",
+                icon: "download",
+                run: () =>
+                    setExportScope({ label: "All controls", rows: effectiveControls }),
+            },
+            { id: "act-trust", group: "Actions", label: "Open Trust Center", icon: "shieldCheck", run: () => setShowTrustCenter(true) },
+            { id: "act-settings", group: "Actions", label: "Settings", icon: "gear", keywords: "preferences notifications", run: () => setShowSettings(true) },
+            {
+                id: "act-theme",
+                group: "Actions",
+                label: theme === "dark" ? "Switch to light theme" : "Switch to dark theme",
+                icon: theme === "dark" ? "sun" : "moon",
+                keywords: "theme appearance mode",
+                run: toggleTheme,
+            },
+            ...NAV_GROUPS.flatMap((g) =>
+                g.items.map((n) => ({
+                    id: `nav-${n.id}`,
+                    group: "Pages",
+                    label: n.label,
+                    sub: g.label,
+                    icon: n.icon,
+                    run: () => go(n.id),
+                }))
+            ),
+            ...(FRAMEWORKS as Framework[]).map((f) => ({
+                id: `fw-${f.id}`,
+                group: "Frameworks",
+                label: f.name,
+                sub: f.desc,
+                icon: "shield" as const,
+                hint: `${Math.round((f.passing / f.total) * 100)}%`,
+                run: () => handleSelectFramework(f),
+            })),
+            ...effectiveControls.map((c) => ({
+                id: `ctl-${c.id}-${c.fw}`,
+                group: "Controls",
+                label: c.title,
+                sub: `${c.id} · ${c.fw} · ${c.owner}`,
+                icon: "listChecks" as const,
+                keywords: `${c.id} ${c.fw} ${c.owner}`,
+                hint: statusLabel[c.status],
+                run: () => setSelectedControlId(c.id),
+            })),
+            {
+                id: "vendor-twilio",
+                group: "Vendors",
+                label: "Twilio",
+                sub: "Communications API · evidence collection",
+                icon: "globe",
+                keywords: "vendor tprm",
+                run: () => go("vendors"),
+            },
+        ]
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [effectiveControls, theme])
+    const pageTitle = (() => {
+        const item = NAV_GROUPS.flatMap((g) => g.items).find((n) => n.id === activeNav)
+        const page = activeNav === "frameworks" && selectedFramework ? selectedFramework.name : item?.label
+        return `${workspace.name} · ${page ?? "Overview"}`
+    })()
+    const paletteSuggested = [
+        "act-assess",
+        "nav-controls",
+        "nav-frameworks",
+        "vendor-twilio",
+        "act-export",
+        "act-theme",
+    ]
+
     return (
         <>
             <GlobalStyles />
+            {/* Desktop: the app is a frosted window floating over the
+                wallpaper. Narrow viewports go edge to edge (see .zdesk). */}
             <div
-                className={theme === "light" ? "theme-light" : "theme-dark"}
+                className={`zdesk ${theme === "light" ? "theme-light" : "theme-dark"}`}
                 style={{
                     width: "100%",
                     height: "100%",
                     background: C.bg,
                     color: C.text,
                     font: `400 14px/20px ${FONT}`,
-                    display: "flex",
-                    overflow: "hidden",
                     letterSpacing: "-0.005em",
                     position: "relative",
+                    // Own stacking context so the backdrop (z -1) sits above
+                    // this fill but beneath the window.
+                    isolation: "isolate",
+                    display: "flex",
+                    justifyContent: "center",
                 }}
             >
+                <div className="zbackdrop" aria-hidden />
+            <div
+                className="zwindow"
+                style={{
+                    flex: 1,
+                    maxWidth: 1600,
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                    position: "relative",
+                    background: C.windowGlass,
+                    border: `1px solid ${C.borderHi}`,
+                    boxShadow: `${C.shadowLg}, inset 0 1px 0 ${C.glassEdge}`,
+                }}
+            >
+                <TopBar
+                    title={signedOut ? "Plumb" : pageTitle}
+                    tools={!signedOut}
+                    onOpenSearch={() => setShowPalette(true)}
+                    showNotif={showNotif}
+                    setShowNotif={setShowNotif}
+                    notifUnread={notifUnread}
+                    onToggleNotif={openNotif}
+                    theme={theme}
+                    toggleTheme={toggleTheme}
+                />
+                <div style={{ flex: 1, minHeight: 0, display: "flex", visibility: signedOut ? "hidden" : "visible" }}>
                 <Sidebar
                     activeNav={activeNav}
                     setActiveNav={setActiveNav}
@@ -618,9 +711,16 @@ export default function ComplianceDashboard() {
                     setShowWorkspaceMenu={setShowWorkspaceMenu}
                     showUserMenu={showUserMenu}
                     setShowUserMenu={setShowUserMenu}
+                    workspace={workspace}
+                    onSwitchWorkspace={switchWorkspace}
+                    theme={theme}
+                    toggleTheme={toggleTheme}
+                    onOpenShortcuts={() => setShowShortcuts(true)}
+                    onSignOut={() => setSignedOut(true)}
                     onOpenSettings={() => setShowSettings(true)}
                     onOpenTrustCenter={() => setShowTrustCenter(true)}
-                    pushToast={pushToast}
+                    // Count what the Controls page lists, so the badge matches what a click shows.
+                    badges={{ controls: effectiveControls.filter((c) => c.status === "gap").length }}
                 />
                 <div
                     style={{
@@ -630,26 +730,13 @@ export default function ComplianceDashboard() {
                         minWidth: 0,
                     }}
                 >
-                    <TopBar
-                        searchQuery={searchQuery}
-                        setSearchQuery={setSearchQuery}
-                        searchInputRef={searchInputRef}
-                        showNotif={showNotif}
-                        setShowNotif={setShowNotif}
-                        notifUnread={notifUnread}
-                        onToggleNotif={openNotif}
-                        theme={theme}
-                        toggleTheme={toggleTheme}
-                        showTopMenu={showTopMenu}
-                        setShowTopMenu={setShowTopMenu}
-                        pushToast={pushToast}
-                    />
                     <div
                         style={{
                             flex: 1,
-                            overflow: "auto",
-                            padding: "28px 32px 60px 32px",
-                            background: C.bg,
+                            minHeight: 0,
+                            ...(activeNav === "vendors" && vendorWorkspaceOpen
+                                ? { overflow: "hidden", padding: 0 }
+                                : { overflow: "auto", padding: "28px 32px 60px 32px" }),
                         }}
                     >
                         {activeNav === "dashboard" && (
@@ -677,11 +764,15 @@ export default function ComplianceDashboard() {
                                 onSelectActivity={handleSelectActivity}
                                 selectedActivityId={selectedActivity?.id}
                                 onSelectFramework={handleSelectFramework}
-                                liveToastsEnabled={liveToastsEnabled}
-                                toggleLiveToasts={toggleLiveToasts}
                                 onNavigate={setActiveNav}
                                 onDrillToControls={drillToControls}
                                 agentChats={agentChats}
+                                onAddControl={() => setShowAddControl(true)}
+                                onExport={() =>
+                                    setExportScope({ label: "All controls", rows: effectiveControls })
+                                }
+                                onOpenTrustCenter={() => setShowTrustCenter(true)}
+                                onOpenSettings={() => setShowSettings(true)}
                             />
                         )}
                         {activeNav === "controls" && (
@@ -693,17 +784,12 @@ export default function ComplianceDashboard() {
                                 setControlOverrides={setControlOverrides}
                                 onAddControl={() => setShowAddControl(true)}
                                 onExportAll={() =>
-                                    setExportScope({
-                                        label: "All controls",
-                                        count: effectiveControls.length,
-                                        type: "controls",
-                                    })
+                                    setExportScope({ label: "All controls", rows: effectiveControls })
                                 }
-                                onExportSelected={(n) =>
+                                onExportSelected={(ids) =>
                                     setExportScope({
-                                        label: `${n} selected control${n === 1 ? "" : "s"}`,
-                                        count: n,
-                                        type: "controls",
+                                        label: "Selected controls",
+                                        rows: effectiveControls.filter((c) => ids.has(c.id)),
                                     })
                                 }
                                 searchQuery={searchQuery}
@@ -732,21 +818,31 @@ export default function ComplianceDashboard() {
                                 onExport={() =>
                                     setExportScope({
                                         label: selectedFramework.name,
-                                        count: selectedFramework.total,
-                                        type: "framework",
+                                        rows: effectiveControls.filter((c) => c.fw === selectedFramework.fw),
                                     })
                                 }
                                 onSelectControl={setSelectedControlId}
                             />
                         )}
-                        {activeNav !== "dashboard" &&
-                            activeNav !== "controls" &&
-                            activeNav !== "frameworks" && (
-                                <EmptyView nav={activeNav} />
-                            )}
+                        {activeNav === "vendors" && (
+                            <VendorsView
+                                onOpenChange={setVendorWorkspaceOpen}
+                            />
+                        )}
+                        {activeNav === "evidence" && (
+                            <EvidenceView controls={effectiveControls} onOpenControl={setSelectedControlId} />
+                        )}
+                        {activeNav === "policies" && (
+                            <PoliciesView controls={effectiveControls} onOpenControl={setSelectedControlId} />
+                        )}
+                        {activeNav === "risks" && (
+                            <RisksView controls={effectiveControls} onOpenControl={setSelectedControlId} />
+                        )}
+                        {activeNav === "agents" && <AgentsView activities={activityLog} onRunAgent={runAgent} />}
                     </div>
                 </div>
 
+                </div>
                 {showNotif && (
                     <div
                         onClick={() => setShowNotif(false)}
@@ -756,13 +852,13 @@ export default function ComplianceDashboard() {
                             onClick={(e) => e.stopPropagation()}
                             style={{
                                 position: "absolute",
-                                top: 56,
+                                top: 48,
                                 right: 24,
                                 width: 360,
                                 background: C.surfaceHi,
                                 border: `1px solid ${C.borderHi}`,
                                 borderRadius: 12,
-                                boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+                                boxShadow: C.shadowLg,
                                 animation: "zfade 160ms ease",
                                 overflow: "hidden",
                             }}
@@ -787,23 +883,9 @@ export default function ComplianceDashboard() {
                                     },
                                 },
                                 {
-                                    t: "Questionnaire from Acme Corp ready for review",
-                                    s: "3 min ago",
-                                    c: C.accentSoft,
-                                    nav: () => {
-                                        pushToast({
-                                            agent: "Questionnaire Agent",
-                                            controlId: "Acme Corp",
-                                            action: "opened",
-                                            note: "review queue",
-                                        })
-                                        setShowNotif(false)
-                                    },
-                                },
-                                {
-                                    t: "Vendor risk assessment completed for Vercel",
-                                    s: "12 min ago",
-                                    c: C.success,
+                                    t: "Twilio replied on HIPAA BAA Template",
+                                    s: "4 hours ago",
+                                    c: C.warning,
                                     nav: () => {
                                         setActiveNav("vendors")
                                         setShowNotif(false)
@@ -819,7 +901,7 @@ export default function ComplianceDashboard() {
                                         gap: 10,
                                         padding: "12px 16px",
                                         borderBottom:
-                                            i < 2
+                                            i < 1
                                                 ? `1px solid ${C.border}`
                                                 : "none",
                                         cursor: "pointer",
@@ -846,7 +928,7 @@ export default function ComplianceDashboard() {
                                         </div>
                                         <div
                                             style={{
-                                                font: `400 11px/14px ${MONO}`,
+                                                font: `400 11px/14px ${FONT}`,
                                                 color: C.textSubtle,
                                                 marginTop: 2,
                                             }}
@@ -860,18 +942,29 @@ export default function ComplianceDashboard() {
                     </div>
                 )}
 
-                <ToastStack toasts={toasts} />
+                <ShortcutsModal open={showShortcuts && !signedOut} close={() => setShowShortcuts(false)} />
+                {signedOut && (
+                    // Sits on the bare window glass (app content is hidden) until the user signs back in.
+                    <div
+                        style={{
+                            position: "absolute",
+                            inset: "46px 0 0 0",
+                            zIndex: 110,
+                            display: "flex",
+                        }}
+                    >
+                        <SignedOut workspace={workspace.name} onSignIn={() => setSignedOut(false)} />
+                    </div>
+                )}
+                <CommandPalette
+                    open={showPalette && !signedOut}
+                    onClose={() => setShowPalette(false)}
+                    items={paletteItems}
+                    suggestedIds={paletteSuggested}
+                />
                 <NewAssessmentModal
                     open={newAssessment}
                     close={() => setNewAssessment(false)}
-                    onComplete={({ framework, name, gaps }) => {
-                        pushToast({
-                            agent: "Director Agent",
-                            controlId: framework,
-                            action: "completed",
-                            note: `${name} · ${gaps} gaps flagged`,
-                        })
-                    }}
                 />
 
                 {selectedActivity && (
@@ -903,12 +996,6 @@ export default function ComplianceDashboard() {
                                         ...prev,
                                         [c.id]: "review",
                                     }))
-                                    pushToast({
-                                        agent: "You",
-                                        controlId: c.id,
-                                        action: "marked for review",
-                                        note: "manually flagged",
-                                    })
                                 }}
                             />
                         )
@@ -921,51 +1008,22 @@ export default function ComplianceDashboard() {
                     }
                     onAdd={(ctl) => {
                         setAddedControls((prev) => [...prev, ctl])
-                        pushToast({
-                            agent: "You",
-                            controlId: ctl.id,
-                            action: "added control",
-                            note: "added manually",
-                        })
                     }}
                 />
                 <ExportModal
                     open={exportScope !== null}
                     close={() => setExportScope(null)}
                     scope={exportScope}
-                    onComplete={({ format, filename }) => {
-                        pushToast({
-                            agent: "Export",
-                            controlId: filename,
-                            action: `${format.toUpperCase()} ready`,
-                            note: `${exportScope?.count.toLocaleString() ?? "0"} records`,
-                        })
-                    }}
                 />
                 <SettingsModal
                     open={showSettings}
                     close={() => setShowSettings(false)}
-                    onAction={(label, note) =>
-                        pushToast({
-                            agent: "Settings",
-                            controlId: label,
-                            action: "updated",
-                            note: note ?? "saved",
-                        })
-                    }
                 />
                 <TrustCenterModal
                     open={showTrustCenter}
                     close={() => setShowTrustCenter(false)}
-                    onAction={(label, note) =>
-                        pushToast({
-                            agent: "Trust Center",
-                            controlId: label,
-                            action: "ready",
-                            note: note ?? "shared",
-                        })
-                    }
                 />
+            </div>
             </div>
         </>
     )
@@ -980,130 +1038,59 @@ function Sidebar({
     setShowWorkspaceMenu,
     showUserMenu,
     setShowUserMenu,
+    workspace,
+    onSwitchWorkspace,
+    theme,
+    toggleTheme,
+    onOpenShortcuts,
+    onSignOut,
     onOpenSettings,
     onOpenTrustCenter,
-    pushToast,
+    badges,
 }: {
+    badges?: Record<string, number>
     activeNav: string
     setActiveNav: (s: string) => void
     showWorkspaceMenu: boolean
     setShowWorkspaceMenu: (b: boolean) => void
     showUserMenu: boolean
     setShowUserMenu: (b: boolean) => void
+    workspace: (typeof WORKSPACES)[number]
+    onSwitchWorkspace: (id: string) => void
+    theme: "dark" | "light"
+    toggleTheme: () => void
+    onOpenShortcuts: () => void
+    onSignOut: () => void
     onOpenSettings: () => void
     onOpenTrustCenter: () => void
-    pushToast: (t: {
-        agent: string
-        controlId: string
-        action: string
-        note?: string
-    }) => void
 }) {
     const workspaceItems: DropdownItem[] = [
-        {
-            label: "Acme Corp",
-            sub: "Production · current",
-            check: true,
-            onClick: () => {
-                /* already on this workspace */
-            },
-        },
-        {
-            label: "Acme EU",
-            sub: "Production · Frankfurt",
-            onClick: () =>
-                pushToast({
-                    agent: "Workspace",
-                    controlId: "Acme EU",
-                    action: "switched to",
-                    note: "switched workspace",
-                }),
-        },
-        {
-            label: "Plaid Sandbox",
-            sub: "Sandbox · test data",
-            onClick: () =>
-                pushToast({
-                    agent: "Workspace",
-                    controlId: "Plaid Sandbox",
-                    action: "switched to",
-                    note: "switched workspace",
-                }),
-        },
+        ...WORKSPACES.map((w) => ({
+            label: w.name,
+            sub: w.env,
+            check: w.id === workspace.id,
+            onClick: () => onSwitchWorkspace(w.id),
+        })),
         "divider",
-        {
-            label: "Create workspace",
-            icon: "plus",
-            onClick: () =>
-                pushToast({
-                    agent: "Workspace",
-                    controlId: "new",
-                    action: "creation queued",
-                    note: "ready to configure",
-                }),
-        },
-        {
-            label: "Invite team",
-            icon: "user",
-            onClick: () =>
-                pushToast({
-                    agent: "Workspace",
-                    controlId: "team",
-                    action: "invite sent",
-                    note: "check your email",
-                }),
-        },
+        { label: "Workspace settings", icon: "gear", onClick: onOpenSettings },
     ]
     const userMenuItems: DropdownItem[] = [
+        { label: "Settings", icon: "gear", onClick: onOpenSettings },
         {
-            label: "Profile",
-            icon: "user",
-            onClick: () =>
-                pushToast({
-                    agent: "Profile",
-                    controlId: "Sarah Goldberg",
-                    action: "opened",
-                    note: "personal settings",
-                }),
+            label: theme === "dark" ? "Light theme" : "Dark theme",
+            icon: theme === "dark" ? "sun" : "moon",
+            onClick: toggleTheme,
         },
-        {
-            label: "Preferences",
-            icon: "gear",
-            sub: "Notifications, integrations, API",
-            onClick: onOpenSettings,
-        },
-        {
-            label: "Keyboard shortcuts",
-            icon: "keyboard",
-            right: "⌘?",
-            onClick: () =>
-                pushToast({
-                    agent: "Shortcuts",
-                    controlId: "⌘?",
-                    action: "panel coming",
-                    note: "in beta",
-                }),
-        },
+        { label: "Keyboard shortcuts", icon: "keyboard", right: "⌘/", onClick: onOpenShortcuts },
         "divider",
-        {
-            label: "Sign out",
-            icon: "logout",
-            danger: true,
-            onClick: () =>
-                pushToast({
-                    agent: "Auth",
-                    controlId: "session",
-                    action: "signed out",
-                    note: "see you soon",
-                }),
-        },
+        { label: "Sign out", icon: "logout", onClick: onSignOut },
     ]
     return (
         <div
             style={{
                 width: 232,
                 flexShrink: 0,
-                background: C.surface,
+                background: "transparent",
                 borderRight: `1px solid ${C.border}`,
                 display: "flex",
                 flexDirection: "column",
@@ -1113,6 +1100,8 @@ function Sidebar({
             <div style={{ position: "relative", marginBottom: 18 }}>
                 <button
                     onClick={() => setShowWorkspaceMenu(!showWorkspaceMenu)}
+                    aria-haspopup="menu"
+                    aria-expanded={showWorkspaceMenu}
                     className="znav"
                     style={{
                         display: "flex",
@@ -1129,13 +1118,21 @@ function Sidebar({
                 >
                     <div
                         style={{
-                            width: 22,
-                            height: 22,
+                            width: 24,
+                            height: 24,
                             borderRadius: 6,
-                            background: `linear-gradient(135deg, ${C.accent}, ${C.accentSoft})`,
+                            border: `1px solid ${C.borderHi}`,
+                            background: C.surfaceHi,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            font: `500 15px/1 ${SERIF}`,
+                            color: C.text,
                             flexShrink: 0,
                         }}
-                    />
+                    >
+                        {workspace.name[0]}
+                    </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                             style={{
@@ -1143,7 +1140,7 @@ function Sidebar({
                                 color: C.text,
                             }}
                         >
-                            Acme Corp
+                            {workspace.name}
                         </div>
                         <div
                             style={{
@@ -1152,7 +1149,7 @@ function Sidebar({
                                 marginTop: 1,
                             }}
                         >
-                            Production
+                            {workspace.env}
                         </div>
                     </div>
                     <Icon n="caretDown" s={12} c={C.textSubtle} />
@@ -1163,69 +1160,54 @@ function Sidebar({
                         onClose={() => setShowWorkspaceMenu(false)}
                         top={48}
                         left={0}
-                        width={208}
+                        width={220}
                     />
                 )}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                {NAV.map((item) => {
-                    const active = activeNav === item.id
-                    return (
-                        <button
-                            key={item.id}
-                            onClick={() => setActiveNav(item.id)}
-                            className={active ? "" : "znav"}
-                            style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 10,
-                                padding: "7px 10px",
-                                borderRadius: 7,
-                                background: active ? C.accentBg : "transparent",
-                                border: "none",
-                                cursor: "pointer",
-                                font: `${active ? 600 : 500} 13px/18px ${FONT}`,
-                                color: active ? C.accentSoft : C.textMuted,
-                                textAlign: "left",
-                                width: "100%",
-                                transition: "background 120ms",
-                            }}
-                        >
-                            <Icon
-                                n={item.icon}
-                                s={15}
-                                c={active ? C.accentSoft : C.textMuted}
-                            />
-                            {item.label}
-                        </button>
-                    )
-                })}
-            </div>
-            <div
-                style={{ height: 1, background: C.border, margin: "16px 4px" }}
-            />
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <button
-                    className="znav"
-                    style={navItemStyle()}
-                    onClick={onOpenSettings}
-                >
-                    <Icon n="gear" s={15} c={C.textMuted} />
-                    Settings
-                </button>
-                <button
-                    className="znav"
-                    style={navItemStyle()}
-                    onClick={onOpenTrustCenter}
-                >
-                    <Icon n="shieldCheck" s={15} c={C.textMuted} />
-                    Trust Center
-                </button>
-            </div>
-            <div style={{ flex: 1 }} />
+            <nav
+                aria-label="Main"
+                style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 14,
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: "auto",
+                    margin: "0 -4px",
+                    padding: "0 4px",
+                }}
+            >
+                {NAV_GROUPS.map((g) => (
+                    <NavSection
+                        key={g.id}
+                        group={g}
+                        activeNav={activeNav}
+                        setActiveNav={setActiveNav}
+                        badges={badges}
+                    />
+                ))}
+                <NavSection
+                    group={{
+                        id: "workspace",
+                        label: "Workspace",
+                        items: [
+                            { id: "__settings", label: "Settings", icon: "gear" },
+                            { id: "__trust", label: "Trust Center", icon: "shieldCheck" },
+                        ],
+                    }}
+                    activeNav={activeNav}
+                    setActiveNav={(id) =>
+                        id === "__settings" ? onOpenSettings() : onOpenTrustCenter()
+                    }
+                    defaultOpen={false}
+                />
+            </nav>
+
             <div style={{ position: "relative" }}>
                 <button
                     onClick={() => setShowUserMenu(!showUserMenu)}
+                    aria-haspopup="menu"
+                    aria-expanded={showUserMenu}
                     className="znav"
                     style={{
                         display: "flex",
@@ -1245,7 +1227,9 @@ function Sidebar({
                             width: 28,
                             height: 28,
                             borderRadius: 999,
-                            background: `linear-gradient(135deg, #FF6B9D, #C44569)`,
+                            background: C.surfaceHover,
+                            border: `1px solid ${C.border}`,
+                            color: C.text,
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -1281,7 +1265,7 @@ function Sidebar({
                     <DropdownMenu
                         items={userMenuItems}
                         onClose={() => setShowUserMenu(false)}
-                        top={-220}
+                        top={-196}
                         left={0}
                         width={224}
                     />
@@ -1293,231 +1277,276 @@ function Sidebar({
 
 // ============ TOP BAR ============
 
+function NavSection({
+    group,
+    activeNav,
+    setActiveNav,
+    badges,
+    defaultOpen = true,
+}: {
+    group: NavGroup
+    activeNav: string
+    setActiveNav: (id: string) => void
+    badges?: Record<string, number>
+    defaultOpen?: boolean
+}) {
+    const storageKey = `nav-group-${group.id}`
+    const [open, setOpen] = React.useState<boolean>(() => {
+        try {
+            const v = window.localStorage.getItem(storageKey)
+            return v === null ? defaultOpen : v === "1"
+        } catch {
+            return defaultOpen
+        }
+    })
+    const holdsActive = group.items.some((i) => i.id === activeNav)
+    const expanded = !group.label || open || holdsActive
+    const toggle = () => {
+        const next = !open
+        setOpen(next)
+        try {
+            window.localStorage.setItem(storageKey, next ? "1" : "0")
+        } catch {
+            // ignore (private mode)
+        }
+    }
+    return (
+        <div>
+            {group.label && (
+                <button
+                    onClick={toggle}
+                    aria-expanded={expanded}
+                    className="znav"
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        width: "100%",
+                        padding: "4px 10px",
+                        marginBottom: 2,
+                        background: "transparent",
+                        border: "none",
+                        borderRadius: 6,
+                        cursor: holdsActive ? "default" : "pointer",
+                        font: `500 12px/16px ${FONT}`,
+                        color: C.textSubtle,
+                        textAlign: "left",
+                    }}
+                >
+                    <span style={{ flex: 1 }}>{group.label}</span>
+                    {!expanded && (
+                        <span style={{ font: `500 10px/14px ${FONT}`, letterSpacing: 0 }}>
+                            {group.items.length}
+                        </span>
+                    )}
+                    <span
+                        style={{
+                            display: "flex",
+                            transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
+                            transition: "transform 180ms ease",
+                            opacity: holdsActive ? 0.35 : 1,
+                        }}
+                    >
+                        <Icon n="caretDown" s={11} c={C.textSubtle} />
+                    </span>
+                </button>
+            )}
+            <div className="zfold" data-open={expanded}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                    {group.items.map((item) => {
+                        const active = activeNav === item.id
+                        const badge = badges?.[item.id]
+                        return (
+                            <button
+                                key={item.id}
+                                onClick={() => setActiveNav(item.id)}
+                                aria-current={active ? "page" : undefined}
+                                tabIndex={expanded ? 0 : -1}
+                                className={active ? "znav-active" : "znav"}
+                                style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 10,
+                                    padding: "7px 10px",
+                                    borderRadius: 7,
+                                    background: active ? C.hoverOverlay : "transparent",
+                                    boxShadow: active ? `inset 0 0 0 1px ${C.border}` : "none",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    font: `${active ? 600 : 500} 13px/18px ${FONT}`,
+                                    color: active ? C.text : C.textMuted,
+                                    textAlign: "left",
+                                    width: "100%",
+                                    transition: "background 120ms, color 120ms",
+                                }}
+                            >
+                                <Icon n={item.icon} s={15} c={active ? C.accentSoft : C.textMuted} />
+                                <span style={{ flex: 1 }}>{item.label}</span>
+                                {badge ? (
+                                    <span
+                                        style={{
+                                            font: `500 11px/14px ${FONT}`,
+                                            color: C.danger,
+                                        }}
+                                        aria-label={`${badge} open gaps`}
+                                    >
+                                        {badge}
+                                    </span>
+                                ) : null}
+                            </button>
+                        )
+                    })}
+                </div>
+            </div>
+        </div>
+    )
+}
+
 function TopBar({
-    searchQuery,
-    setSearchQuery,
-    searchInputRef,
+    title,
+    tools = true,
+    onOpenSearch,
     showNotif,
     setShowNotif,
     notifUnread,
     onToggleNotif,
     theme,
     toggleTheme,
-    showTopMenu,
-    setShowTopMenu,
-    pushToast,
 }: {
-    searchQuery: string
-    setSearchQuery: (s: string) => void
-    searchInputRef: React.RefObject<HTMLInputElement>
+    title: string
+    // False while signed out: the title bar keeps only the window controls.
+    tools?: boolean
+    onOpenSearch: () => void
     showNotif: boolean
     setShowNotif: (b: boolean) => void
     notifUnread: number
     onToggleNotif: () => void
     theme: "dark" | "light"
     toggleTheme: () => void
-    showTopMenu: boolean
-    setShowTopMenu: (b: boolean) => void
-    pushToast: (t: {
-        agent: string
-        controlId: string
-        action: string
-        note?: string
-    }) => void
 }) {
-    const topMenuItems: DropdownItem[] = [
-        {
-            label: "Refresh data",
-            icon: "refresh",
-            onClick: () =>
-                pushToast({
-                    agent: "Sync",
-                    controlId: "dashboard",
-                    action: "refreshed",
-                    note: "all sources synced",
-                }),
-        },
-        {
-            label: "Keyboard shortcuts",
-            icon: "keyboard",
-            right: "⌘?",
-            onClick: () =>
-                pushToast({
-                    agent: "Shortcuts",
-                    controlId: "⌘?",
-                    action: "panel coming",
-                    note: "in beta",
-                }),
-        },
-        "divider",
-        {
-            label: "Send feedback",
-            icon: "sparkle",
-            onClick: () =>
-                pushToast({
-                    agent: "Feedback",
-                    controlId: "thanks",
-                    action: "received",
-                    note: "the team will read it",
-                }),
-        },
-        {
-            label: "Help center",
-            icon: "book",
-            onClick: () =>
-                pushToast({
-                    agent: "Help",
-                    controlId: "docs",
-                    action: "opening",
-                    note: "redirecting",
-                }),
-        },
-        {
-            label: "What's new",
-            icon: "sparkle",
-            right: "3 new",
-            onClick: () =>
-                pushToast({
-                    agent: "Changelog",
-                    controlId: "v0.42",
-                    action: "released",
-                    note: "3 new features this week",
-                }),
-        },
-    ]
+    // Window title bar: decorative window controls, centered title, and the
+    // app-level tools (search, notifications, theme) on the right.
     return (
         <div
             style={{
-                height: 56,
+                height: 46,
                 flexShrink: 0,
                 borderBottom: `1px solid ${C.border}`,
                 display: "flex",
                 alignItems: "center",
-                padding: "0 24px",
-                gap: 16,
-                background: C.bg,
+                padding: "0 12px 0 16px",
+                gap: 10,
+                position: "relative",
             }}
         >
+            <div aria-hidden style={{ display: "flex", gap: 8 }}>
+                {["#EE6A5F", "#F5BF4F", "#62C554"].map((c) => (
+                    <span
+                        key={c}
+                        style={{
+                            width: 12,
+                            height: 12,
+                            borderRadius: 999,
+                            background: c,
+                            boxShadow: "inset 0 0 0 0.5px rgba(0,0,0,0.25)",
+                        }}
+                    />
+                ))}
+            </div>
             <div
                 style={{
-                    flex: 1,
-                    maxWidth: 480,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "7px 12px",
-                    background: C.surface,
-                    border: `1px solid ${C.border}`,
-                    borderRadius: 8,
+                    position: "absolute",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    font: `500 12.5px/16px ${FONT}`,
+                    color: C.textSubtle,
+                    pointerEvents: "none",
+                    whiteSpace: "nowrap",
                 }}
             >
-                <Icon n="search" s={14} c={C.textSubtle} />
-                <input
-                    ref={searchInputRef}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search controls, frameworks, evidence..."
-                    className="zinp"
+                {title}
+            </div>
+            {tools && (
+                <>
+                <div style={{ flex: 1 }} />
+                <button
+                    onClick={onOpenSearch}
+                    aria-label="Search (⌘K)"
+                    aria-keyshortcuts="Meta+K"
+                    className="zbtn"
                     style={{
-                        flex: 1,
-                        background: "transparent",
-                        border: "none",
-                        outline: "none",
-                        color: C.text,
-                        font: `400 13px/18px ${FONT}`,
-                    }}
-                />
-                <div
-                    style={{
-                        font: `500 10px/14px ${MONO}`,
-                        color: C.textSubtle,
-                        padding: "2px 6px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        height: 30,
+                        padding: "0 6px 0 10px",
+                        background: C.surface,
                         border: `1px solid ${C.border}`,
-                        borderRadius: 4,
+                        borderRadius: 8,
+                        cursor: "pointer",
+                        font: `400 12.5px/16px ${FONT}`,
+                        color: C.textMuted,
                     }}
                 >
-                    ⌘K
-                </div>
-            </div>
-            <div style={{ flex: 1 }} />
-            <button
-                className="zicon"
-                onClick={onToggleNotif}
-                aria-label={`Notifications${notifUnread > 0 ? ` · ${notifUnread} unread` : ""}`}
-                style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 8,
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    position: "relative",
-                }}
-            >
-                <Icon n="bell" s={16} c={C.textMuted} />
-                {notifUnread > 0 && (
-                    <div
-                        style={{
-                            position: "absolute",
-                            top: 4,
-                            right: 4,
-                            minWidth: 14,
-                            height: 14,
-                            padding: "0 4px",
-                            borderRadius: 999,
-                            background: C.accent,
-                            border: `2px solid ${C.bg}`,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            font: `600 9px/12px ${FONT}`,
-                            color: "#FFFFFF",
-                        }}
-                    >
-                        {notifUnread > 9 ? "9+" : notifUnread}
-                    </div>
-                )}
-            </button>
-            <button
-                className="zicon"
-                onClick={toggleTheme}
-                aria-label={
-                    theme === "dark"
-                        ? "Switch to light theme"
-                        : "Switch to dark theme"
-                }
-                title={
-                    theme === "dark"
-                        ? "Switch to light theme"
-                        : "Switch to dark theme"
-                }
-                style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 8,
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                }}
-            >
-                <Icon
-                    n={theme === "dark" ? "sun" : "moon"}
-                    s={16}
-                    c={C.textMuted}
-                   
-                />
-            </button>
-            <div style={{ position: "relative" }}>
+                    <Icon n="search" s={13} c={C.textMuted} />
+                    <span style={{ marginRight: 14 }}>Search</span>
+                    <Kbd>⌘K</Kbd>
+                </button>
                 <button
                     className="zicon"
-                    onClick={() => setShowTopMenu(!showTopMenu)}
-                    aria-label="More actions"
+                    onClick={onToggleNotif}
+                    aria-label={`Notifications${notifUnread > 0 ? ` · ${notifUnread} unread` : ""}`}
+                    style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 8,
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        position: "relative",
+                    }}
+                >
+                    <Icon n="bell" s={16} c={C.textMuted} />
+                    {notifUnread > 0 && (
+                        <div
+                            style={{
+                                position: "absolute",
+                                top: 5,
+                                right: 4,
+                                minWidth: 15,
+                                height: 15,
+                                padding: "0 4px",
+                                boxSizing: "border-box",
+                                borderRadius: 999,
+                                background: C.accent,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                font: `600 10px/15px ${FONT}`,
+                                fontVariantNumeric: "tabular-nums",
+                                color: C.accentFg,
+                            }}
+                        >
+                            {notifUnread > 9 ? "9+" : notifUnread}
+                        </div>
+                    )}
+                </button>
+                <button
+                    className="zicon"
+                    onClick={toggleTheme}
+                    aria-label={
+                        theme === "dark"
+                            ? "Switch to light theme"
+                            : "Switch to dark theme"
+                    }
+                    title={
+                        theme === "dark"
+                            ? "Switch to light theme"
+                            : "Switch to dark theme"
+                    }
                     style={{
                         width: 36,
                         height: 36,
@@ -1530,18 +1559,15 @@ function TopBar({
                         justifyContent: "center",
                     }}
                 >
-                    <Icon n="dotsH" s={18} c={C.textMuted} />
-                </button>
-                {showTopMenu && (
-                    <DropdownMenu
-                        items={topMenuItems}
-                        onClose={() => setShowTopMenu(false)}
-                        top={44}
-                        right={0}
-                        width={240}
+                    <Icon
+                        n={theme === "dark" ? "sun" : "moon"}
+                        s={16}
+                        c={C.textMuted}
+                   
                     />
-                )}
-            </div>
+                </button>
+                </>
+            )}
         </div>
     )
 }
@@ -1570,11 +1596,13 @@ function DashboardView(props: any) {
         onSelectActivity,
         selectedActivityId,
         onSelectFramework,
-        liveToastsEnabled,
-        toggleLiveToasts,
         onNavigate,
         onDrillToControls,
         agentChats,
+        onAddControl,
+        onExport,
+        onOpenTrustCenter,
+        onOpenSettings,
     } = props
     const rangeLabels: Record<string, string> = {
         "7d": "Last 7 days",
@@ -1583,6 +1611,44 @@ function DashboardView(props: any) {
         ytd: "Year to date",
     }
     const range = RANGE_CONFIG[timeRange as RangeKey] ?? RANGE_CONFIG["30d"]
+    const runningCount = activityLog.filter((a: Activity) => a.status === "running").length
+    const testsPassing = filteredControls.filter((c: Ctl) => c.status === "passing").length
+    // Ordered by urgency: open gaps, then sign-offs, then vendor blockers,
+    // then work already in motion.
+    const gapFrameworks = (FRAMEWORKS as Framework[])
+        .filter((f) => f.gaps > 0)
+        .sort((x, y) => y.gaps - x.gaps)
+        .slice(0, 2)
+    const inReview = (FRAMEWORKS as Framework[]).reduce((n, f) => n + f.review, 0)
+    const attention: AttentionItem[] = [
+        ...gapFrameworks.map((f) => ({
+            id: `gap-${f.id}`,
+            icon: "warning" as const,
+            tone: C.danger,
+            title: `Remediate ${f.gaps} gaps in ${f.name}`,
+            meta: `${f.passing}/${f.total} passing`,
+            action: "Remediate",
+            onClick: () => onDrillToControls?.("gap", f.fw),
+        })),
+        {
+            id: "review",
+            icon: "eye",
+            tone: C.warning,
+            title: `Sign off ${inReview} controls waiting for review`,
+            meta: `${FRAMEWORKS.length} frameworks`,
+            action: "Review",
+            onClick: () => onDrillToControls?.("review", null),
+        },
+        {
+            id: "vendor-twilio",
+            icon: "globe",
+            tone: C.textMuted,
+            title: "Twilio pen test report is blocked on an NDA",
+            meta: "Vendor · tier 3",
+            action: "Open",
+            onClick: () => onNavigate?.("vendors"),
+        },
+    ]
     return (
         <div style={{ maxWidth: 1280, margin: "0 auto" }}>
             <div
@@ -1601,13 +1667,17 @@ function DashboardView(props: any) {
                             marginBottom: 4,
                         }}
                     >
-                        Welcome back, Sarah.
+                        {new Date().toLocaleDateString(undefined, {
+                            weekday: "long",
+                            month: "long",
+                            day: "numeric",
+                        })}
                     </div>
                     <h1
                         style={{
                             margin: 0,
-                            font: `600 28px/36px ${FONT}`,
-                            letterSpacing: "-0.025em",
+                            font: `500 34px/40px ${SERIF}`,
+                            letterSpacing: "-0.012em",
                             color: C.text,
                         }}
                     >
@@ -1622,7 +1692,7 @@ function DashboardView(props: any) {
                             style={{
                                 ...btnSecondary,
                                 ...(timeRange !== "30d" && {
-                                    borderColor: "rgba(124,92,255,0.45)",
+                                    borderColor: C.accentLine,
                                     background: C.accentBg,
                                     color: C.accentSoft,
                                 }),
@@ -1664,7 +1734,7 @@ function DashboardView(props: any) {
                                     borderRadius: 8,
                                     padding: 4,
                                     zIndex: 20,
-                                    boxShadow: "0 12px 32px rgba(0,0,0,0.4)",
+                                    boxShadow: C.shadowLg,
                                     animation: "zfade 140ms ease",
                                 }}
                             >
@@ -1706,34 +1776,25 @@ function DashboardView(props: any) {
                         className="zbtn"
                         style={btnPrimary}
                     >
-                        <Icon n="plus" s={13} c={C.bg} />
+                        <Icon n="plus" s={13} c={C.primaryFg} />
                         New assessment
                     </button>
                 </div>
             </div>
-            <div
+            <section
+                aria-label="Key metrics"
                 style={{
+                    ...panelStyle,
                     display: "grid",
                     gridTemplateColumns: "repeat(4, 1fr)",
-                    gap: 12,
-                    marginBottom: 24,
+                    marginBottom: 28,
                 }}
             >
-                <StatCard
-                    label="Active frameworks"
-                    value={String(FRAMEWORKS.length)}
-                    delta={`+${range.frameworksDelta} ${range.period}`}
-                    deltaColor={C.success}
-                    icon="shield"
-                    onClick={() => onNavigate?.("frameworks")}
-                />
                 <StatCard
                     label="Controls passing"
                     value={`${stats.passingPct}%`}
                     delta={`${stats.passingControls} of ${totalControls}`}
                     deltaColor={C.textMuted}
-                    icon="check"
-                    accent
                     onClick={() => onDrillToControls?.("passing", null)}
                 />
                 <StatCard
@@ -1745,7 +1806,6 @@ function DashboardView(props: any) {
                             : `−${range.gapsResolvedDelta} ${range.period}`
                     }
                     deltaColor={C.success}
-                    icon="warning"
                     onClick={() => onDrillToControls?.("gap", null)}
                 />
                 <StatCard
@@ -1755,19 +1815,81 @@ function DashboardView(props: any) {
                         range.evidenceDelta + (evidenceLiveDrift ?? 0)
                     ).toLocaleString()} ${range.period}`}
                     deltaColor={C.success}
-                    icon="fileText"
                     bumpKey={evidenceBump}
                     onClick={() => onNavigate?.("evidence")}
                 />
-            </div>
+                <StatCard
+                    label="Active frameworks"
+                    value={String(FRAMEWORKS.length)}
+                    delta={`+${range.frameworksDelta} ${range.period}`}
+                    deltaColor={C.success}
+                    onClick={() => onNavigate?.("frameworks")}
+                />
+            </section>
+
             <SectionHeader
-                title="Framework status"
-                sub="Click a framework to drill in"
+                title="Needs attention"
+                count={attention.length}
+            />
+            <section style={{ ...panelStyle, marginBottom: 12 }}>
+                {attention.map((item, i) => (
+                    <AttentionRow
+                        key={item.id}
+                        item={item}
+                        last={i === attention.length - 1}
+                    />
+                ))}
+            </section>
+            <nav
+                aria-label="Quick actions"
+                style={{
+                    ...panelStyle,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(4, 1fr)",
+                    marginBottom: 32,
+                }}
+            >
+                {(
+                    [
+                        ["plus", "Add control", onAddControl],
+                        ["download", "Export report", onExport],
+                        ["shieldCheck", "Trust Center", onOpenTrustCenter],
+                        ["gear", "Settings", onOpenSettings],
+                    ] as [keyof typeof I, string, () => void][]
+                ).map(([icon, label, onClick], i) => (
+                    <button
+                        key={label}
+                        onClick={onClick}
+                        className="znav"
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 8,
+                            padding: "11px 12px",
+                            background: "transparent",
+                            border: "none",
+                            borderLeft: i === 0 ? "none" : `1px solid ${C.border}`,
+                            borderRadius: 0,
+                            cursor: "pointer",
+                            font: `500 13px/18px ${FONT}`,
+                            color: C.textMuted,
+                        }}
+                    >
+                        <Icon n={icon} s={14} c={C.textSubtle} />
+                        {label}
+                    </button>
+                ))}
+            </nav>
+
+            <SectionHeader
+                title="Frameworks"
+                count={FRAMEWORKS.length}
             />
             <div
                 style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(2, 1fr)",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(270px, 1fr))",
                     gap: 12,
                     marginBottom: 32,
                 }}
@@ -1780,216 +1902,155 @@ function DashboardView(props: any) {
                     />
                 ))}
             </div>
-            <div
-                style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                }}
-            >
-                <div
-                    style={{
-                        background: C.surface,
-                        border: `1px solid ${C.border}`,
-                        borderRadius: 12,
-                        overflow: "hidden",
-                    }}
-                >
-                    <div
-                        style={{
-                            padding: "16px 18px",
-                            borderBottom: `1px solid ${C.border}`,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                        }}
-                    >
-                        <div>
-                            <div style={{ font: `600 14px/18px ${FONT}` }}>
-                                Live agent activity
-                            </div>
-                            <div
-                                style={{
-                                    font: `400 12px/16px ${FONT}`,
-                                    color: C.textSubtle,
-                                    marginTop: 2,
-                                }}
-                            >
-                                {activityLog.length} run
-                                {activityLog.length === 1 ? "" : "s"} ·{" "}
-                                {rangeLabels[timeRange]?.toLowerCase() ?? ""}
-                            </div>
-                        </div>
+
+            <SectionHeader title="History" />
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <Accordion
+                    id="overview-activity"
+                    title="Agent activity"
+                    summary={`${activityLog.length} run${activityLog.length === 1 ? "" : "s"} · ${runningCount} running · ${rangeLabels[timeRange]?.toLowerCase() ?? ""}`}
+                    right={
                         <div
                             style={{
                                 display: "flex",
                                 alignItems: "center",
-                                gap: 8,
+                                gap: 6,
+                                font: `500 11px/14px ${FONT}`,
+                                color: C.success,
                             }}
                         >
-                            <button
-                                onClick={toggleLiveToasts}
-                                className="zicon"
-                                aria-label={
-                                    liveToastsEnabled
-                                        ? "Mute live-update toasts"
-                                        : "Unmute live-update toasts"
-                                }
-                                title={
-                                    liveToastsEnabled
-                                        ? "Mute live-update toasts"
-                                        : "Unmute live-update toasts"
-                                }
-                                style={{
-                                    width: 26,
-                                    height: 26,
-                                    borderRadius: 6,
-                                    background: "transparent",
-                                    border: "none",
-                                    cursor: "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    opacity: liveToastsEnabled ? 1 : 0.55,
-                                }}
-                            >
-                                <Icon
-                                    n={liveToastsEnabled ? "bell" : "bellSlash"}
-                                    s={14}
-                                    c={C.textMuted}
-                                   
-                                />
-                            </button>
                             <div
-                                style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 6,
-                                    padding: "3px 9px",
-                                    borderRadius: 999,
-                                    background: liveToastsEnabled
-                                        ? C.successBg
-                                        : C.hoverOverlay,
-                                }}
-                            >
-                                <div
-                                    className={
-                                        liveToastsEnabled
-                                            ? "zlive-dot"
-                                            : undefined
-                                    }
-                                    style={{
-                                        width: 5,
-                                        height: 5,
-                                        borderRadius: 999,
-                                        background: liveToastsEnabled
-                                            ? C.success
-                                            : C.textSubtle,
-                                    }}
-                                />
-                                <div
-                                    style={{
-                                        font: `600 10px/14px ${MONO}`,
-                                        color: liveToastsEnabled
-                                            ? C.success
-                                            : C.textSubtle,
-                                        letterSpacing: 0.5,
-                                    }}
-                                >
-                                    {liveToastsEnabled ? "LIVE" : "MUTED"}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div>
-                        {activityLog.map((a: Activity, i: number) => {
-                            const msgs = agentChats?.[a.id] ?? []
-                            // Has chat = at least one user message has been
-                            // sent (welcome bubble alone doesn't count).
-                            const hasChat = msgs.some(
-                                (m: ChatMessage) => m.role === "user"
-                            )
-                            return (
-                                <ActivityRow
-                                    key={a.id}
-                                    a={a}
-                                    last={i === activityLog.length - 1}
-                                    isNew={
-                                        a.id.startsWith("live-") ||
-                                        a.id.startsWith("auto-")
-                                    }
-                                    onClick={() => onSelectActivity(a)}
-                                    onOpenChat={() =>
-                                        onSelectActivity(a, "chat")
-                                    }
-                                    active={selectedActivityId === a.id}
-                                    hasChat={hasChat}
-                                />
-                            )
-                        })}
-                    </div>
-                </div>
-                <div
-                    style={{
-                        background: C.surface,
-                        border: `1px solid ${C.border}`,
-                        borderRadius: 12,
-                        overflow: "hidden",
-                    }}
-                >
-                    <div
-                        style={{
-                            padding: "16px 18px",
-                            borderBottom: `1px solid ${C.border}`,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                        }}
-                    >
-                        <div>
-                            <div style={{ font: `600 14px/18px ${FONT}` }}>
-                                Recent control tests
-                            </div>
-                            <div
-                                style={{
-                                    font: `400 12px/16px ${FONT}`,
-                                    color: C.textSubtle,
-                                    marginTop: 2,
-                                }}
-                            >
-                                {searchQuery
-                                    ? `${filteredControls.length} matching "${searchQuery}"`
-                                    : `Top 8 by recency · ${rangeLabels[timeRange]?.toLowerCase() ?? "all time"}`}
-                            </div>
-                        </div>
-                    </div>
-                    <div style={{ maxHeight: 460, overflow: "auto" }}>
-                        {filteredControls.length === 0 && (
-                            <div
-                                style={{
-                                    padding: "40px 18px",
-                                    textAlign: "center",
-                                    color: C.textSubtle,
-                                    font: `400 13px/18px ${FONT}`,
-                                }}
-                            >
-                                No controls match "{searchQuery}"
-                            </div>
-                        )}
-                        {filteredControls.map((c: Ctl, i: number) => (
-                            <DashboardControlRow
-                                key={c.id}
-                                c={c}
-                                last={i === filteredControls.length - 1}
-                                running={runningTests.has(c.id)}
-                                flash={resolvedFlash.has(c.id)}
-                                runTest={() => runTest(c.id)}
+                                className="zlive-dot"
+                                style={{ width: 6, height: 6, borderRadius: 999, background: C.success }}
                             />
-                        ))}
-                    </div>
-                </div>
+                            Live
+                        </div>
+                    }
+                >
+                    {activityLog.map((a: Activity, i: number) => {
+                        const msgs = agentChats?.[a.id] ?? []
+                        // Has chat = at least one user message has been
+                        // sent (welcome bubble alone doesn't count).
+                        const hasChat = msgs.some(
+                            (m: ChatMessage) => m.role === "user"
+                        )
+                        return (
+                            <ActivityRow
+                                key={a.id}
+                                a={a}
+                                last={i === activityLog.length - 1}
+                                isNew={
+                                    a.id.startsWith("live-") ||
+                                    a.id.startsWith("auto-")
+                                }
+                                onClick={() => onSelectActivity(a)}
+                                onOpenChat={() => onSelectActivity(a, "chat")}
+                                active={selectedActivityId === a.id}
+                                hasChat={hasChat}
+                            />
+                        )
+                    })}
+                </Accordion>
+                <Accordion
+                    id="overview-tests"
+                    title="Recent control tests"
+                    summary={
+                        searchQuery
+                            ? `${filteredControls.length} matching "${searchQuery}"`
+                            : `${filteredControls.length} most recent · ${testsPassing} passing`
+                    }
+                >
+                    {filteredControls.length === 0 && (
+                        <div
+                            style={{
+                                padding: "40px 18px",
+                                textAlign: "center",
+                                color: C.textSubtle,
+                                font: `400 13px/18px ${FONT}`,
+                            }}
+                        >
+                            No controls match "{searchQuery}"
+                        </div>
+                    )}
+                    {filteredControls.map((c: Ctl, i: number) => (
+                        <DashboardControlRow
+                            key={c.id}
+                            c={c}
+                            last={i === filteredControls.length - 1}
+                            running={runningTests.has(c.id)}
+                            flash={resolvedFlash.has(c.id)}
+                            runTest={() => runTest(c.id)}
+                        />
+                    ))}
+                </Accordion>
             </div>
         </div>
+    )
+}
+
+type AttentionItem = {
+    id: string
+    icon: keyof typeof I
+    tone: string
+    title: string
+    meta: string
+    action: string
+    onClick: () => void
+}
+
+function AttentionRow({ item, last }: { item: AttentionItem; last: boolean }) {
+    return (
+        <button
+            onClick={item.onClick}
+            className="zrow"
+            style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                width: "100%",
+                padding: "12px 18px",
+                background: "transparent",
+                border: "none",
+                borderBottom: last ? "none" : `1px solid ${C.border}`,
+                cursor: "pointer",
+                textAlign: "left",
+                color: C.text,
+            }}
+        >
+            <span
+                style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 999,
+                    background: `color-mix(in srgb, ${item.tone} 14%, transparent)`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                }}
+            >
+                <Icon n={item.icon} s={13} c={item.tone} />
+            </span>
+            <span style={{ flex: 1, minWidth: 0, font: `500 13.5px/18px ${FONT}` }}>
+                {item.title}
+            </span>
+            <span style={{ font: `400 11.5px/16px ${FONT}`, color: C.textSubtle }}>
+                {item.meta}
+            </span>
+            <span
+                style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    minWidth: 92,
+                    justifyContent: "flex-end",
+                    font: `500 12.5px/16px ${FONT}`,
+                    color: C.textMuted,
+                }}
+            >
+                {item.action}
+            </span>
+        </button>
     )
 }
 
@@ -1998,8 +2059,6 @@ function StatCard({
     value,
     delta,
     deltaColor,
-    icon,
-    accent,
     bumpKey,
     onClick,
 }: {
@@ -2007,57 +2066,34 @@ function StatCard({
     value: string
     delta: string
     deltaColor: string
-    icon: keyof typeof I
-    accent?: boolean
     bumpKey?: number
     onClick?: () => void
 }) {
-    const interactive = !!onClick
+    // A cell inside the shared KPI strip · the strip owns the glass panel.
     return (
-        <div
+        <button
             onClick={onClick}
-            className={interactive ? "zfw-card" : undefined}
+            className="znav zkpi"
             style={{
-                background: accent
-                    ? "linear-gradient(180deg, rgba(124,92,255,0.08), rgba(124,92,255,0.02))"
-                    : C.surface,
-                border: `1px solid ${accent ? "rgba(124,92,255,0.22)" : C.border}`,
-                borderRadius: 12,
-                padding: "16px 18px",
-                cursor: interactive ? "pointer" : "default",
+                display: "block",
+                textAlign: "left",
+                background: "transparent",
+                border: "none",
+                borderRadius: 0,
+                padding: "16px 20px 18px",
+                cursor: onClick ? "pointer" : "default",
+                color: C.text,
             }}
         >
-            <div
-                style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    marginBottom: 14,
-                }}
-            >
-                <div
-                    style={{
-                        font: `500 12px/16px ${FONT}`,
-                        color: C.textSubtle,
-                        letterSpacing: 0.2,
-                    }}
-                >
-                    {label}
-                </div>
-                <Icon
-                    n={icon}
-                    s={14}
-                    c={accent ? C.accentSoft : C.textSubtle}
-                />
-            </div>
+            <div style={{ ...eyebrowStyle, marginBottom: 10 }}>{label}</div>
             <div
                 key={bumpKey}
                 className={bumpKey !== undefined ? "zbump-text" : undefined}
                 style={{
-                    font: `600 32px/36px ${FONT}`,
-                    letterSpacing: "-0.035em",
+                    font: `600 30px/34px ${FONT}`,
+                    letterSpacing: "-0.03em",
                     color: C.text,
-                    marginBottom: 6,
+                    marginBottom: 4,
                 }}
             >
                 {value}
@@ -2065,42 +2101,48 @@ function StatCard({
             <div style={{ font: `500 12px/16px ${FONT}`, color: deltaColor }}>
                 {delta}
             </div>
-        </div>
+        </button>
     )
 }
 
-function SectionHeader({ title, sub }: { title: string; sub: string }) {
+function SectionHeader({
+    title,
+    sub,
+    count,
+}: {
+    title: string
+    sub?: string
+    count?: number
+}) {
     return (
         <div
             style={{
                 display: "flex",
                 alignItems: "baseline",
-                justifyContent: "space-between",
-                marginBottom: 12,
-                marginTop: 8,
+                gap: 10,
+                marginBottom: 10,
             }}
         >
-            <div>
-                <h2
-                    style={{
-                        margin: 0,
-                        font: `600 16px/22px ${FONT}`,
-                        letterSpacing: "-0.015em",
-                        color: C.text,
-                    }}
-                >
-                    {title}
-                </h2>
-                <div
-                    style={{
-                        font: `400 12px/16px ${FONT}`,
-                        color: C.textSubtle,
-                        marginTop: 3,
-                    }}
-                >
+            <h2
+                style={{
+                    margin: 0,
+                    font: `600 15px/20px ${FONT}`,
+                    letterSpacing: "-0.01em",
+                    color: C.text,
+                }}
+            >
+                {title}
+            </h2>
+            {count !== undefined && (
+                <span style={{ font: `500 12px/16px ${FONT}`, color: C.textSubtle }}>
+                    {count}
+                </span>
+            )}
+            {sub && (
+                <span style={{ font: `400 12.5px/16px ${FONT}`, color: C.textSubtle }}>
                     {sub}
-                </div>
-            </div>
+                </span>
+            )}
         </div>
     )
 }
@@ -2108,10 +2150,14 @@ function SectionHeader({ title, sub }: { title: string; sub: string }) {
 function FrameworkCard({ f, onClick }: { f: Framework; onClick: () => void }) {
     const pct = Math.round((f.passing / f.total) * 100)
     return (
-        <div
+        <button
             onClick={onClick}
             className="zfw-card"
             style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                color: C.text,
                 background: C.surface,
                 border: `1px solid ${C.border}`,
                 borderRadius: 12,
@@ -2122,31 +2168,26 @@ function FrameworkCard({ f, onClick }: { f: Framework; onClick: () => void }) {
             <div
                 style={{
                     display: "flex",
+                    alignItems: "center",
                     justifyContent: "space-between",
-                    alignItems: "flex-start",
+                    gap: 8,
+                    minHeight: 22,
+                }}
+            >
+                <div style={{ font: `600 15px/20px ${FONT}`, letterSpacing: "-0.005em" }}>
+                    {f.name}
+                </div>
+                {/* Status by exception: the bar colour already says "on track". */}
+                {f.status === "attention" && <StatusPill s={f.status} />}
+            </div>
+            <div
+                style={{
+                    font: `400 12px/16px ${FONT}`,
+                    color: C.textSubtle,
                     marginBottom: 14,
                 }}
             >
-                <div>
-                    <div
-                        style={{
-                            font: `600 15px/20px ${FONT}`,
-                            letterSpacing: "-0.005em",
-                            marginBottom: 2,
-                        }}
-                    >
-                        {f.name}
-                    </div>
-                    <div
-                        style={{
-                            font: `400 12px/16px ${FONT}`,
-                            color: C.textSubtle,
-                        }}
-                    >
-                        {f.desc}
-                    </div>
-                </div>
-                <StatusPill s={f.status} />
+                {f.desc}
             </div>
             <div
                 style={{
@@ -2154,31 +2195,23 @@ function FrameworkCard({ f, onClick }: { f: Framework; onClick: () => void }) {
                     alignItems: "baseline",
                     gap: 6,
                     marginBottom: 8,
+                    whiteSpace: "nowrap",
                 }}
             >
-                <div
-                    style={{
-                        font: `600 26px/30px ${FONT}`,
-                        letterSpacing: "-0.025em",
-                    }}
-                >
+                <div style={{ font: `600 26px/30px ${FONT}`, letterSpacing: "-0.025em" }}>
                     {pct}%
                 </div>
-                <div
-                    style={{
-                        font: `400 13px/18px ${FONT}`,
-                        color: C.textSubtle,
-                    }}
-                >
-                    {f.passing} / {f.total} controls passing
+                <div style={{ font: `400 13px/18px ${FONT}`, color: C.textSubtle }}>
+                    {f.passing} / {f.total} passing
                 </div>
             </div>
             <ProgressBar value={pct} />
             <div
                 style={{
                     display: "flex",
-                    gap: 18,
+                    gap: 14,
                     marginTop: 14,
+                    whiteSpace: "nowrap",
                     font: `400 12px/16px ${FONT}`,
                     color: C.textSubtle,
                     alignItems: "center",
@@ -2197,31 +2230,12 @@ function FrameworkCard({ f, onClick }: { f: Framework; onClick: () => void }) {
                     in review
                 </div>
                 <div style={{ flex: 1 }} />
-                {f.status === "attention" ? (
-                    <div
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 4,
-                            padding: "2px 8px",
-                            borderRadius: 999,
-                            background: C.warningBg,
-                            color: C.warning,
-                            font: `600 10px/14px ${FONT}`,
-                            letterSpacing: 0.3,
-                            textTransform: "uppercase",
-                        }}
-                    >
-                        Remediate {f.gaps}
-                    </div>
-                ) : (
-                    <div style={{ font: `400 11px/14px ${MONO}` }}>
-                        {relTime(PAGE_LOAD_MS - f.lastTestMin * 60000)}
-                    </div>
-                )}
+                <div style={{ font: `400 11px/14px ${FONT}`, whiteSpace: "nowrap" }}>
+                    {relTime(PAGE_LOAD_MS - f.lastTestMin * 60000)}
+                </div>
                 <Icon n="caretRight" s={11} c={C.textSubtle} />
             </div>
-        </div>
+        </button>
     )
 }
 
@@ -2244,7 +2258,7 @@ function ActivityRow({
 }) {
     const iconN: keyof typeof I =
         a.status === "running"
-            ? "sparkle"
+            ? "loader"
             : a.status === "complete"
               ? "check"
               : "play"
@@ -2271,9 +2285,9 @@ function ActivityRow({
                 padding: "12px 18px",
                 borderBottom: last ? "none" : `1px solid ${C.border}`,
                 background: active
-                    ? "rgba(124,92,255,0.10)"
+                    ? C.accentBg
                     : a.status === "running"
-                      ? "rgba(124,92,255,0.04)"
+                      ? C.accentTint
                       : "transparent",
                 cursor: "pointer",
                 borderLeft: active
@@ -2339,7 +2353,7 @@ function ActivityRow({
             )}
             <div
                 style={{
-                    font: `400 11px/14px ${MONO}`,
+                    font: `400 11px/14px ${FONT}`,
                     color: C.textSubtle,
                     flexShrink: 0,
                 }}
@@ -2433,7 +2447,7 @@ function DashboardControlRow({
                     {c.owner} · {c.evidence} evidence · {relTime(PAGE_LOAD_MS - c.lastTestMin * 60000)}
                 </div>
             </div>
-            <StatusPill s={running ? "running" : c.status} />
+            <WinPill running={running} status={c.status} />
             <button
                 onClick={runTest}
                 disabled={running}
@@ -2443,7 +2457,7 @@ function DashboardControlRow({
                     height: 28,
                     borderRadius: 6,
                     background: running ? C.accentBg : "transparent",
-                    border: `1px solid ${running ? "rgba(124,92,255,0.3)" : C.border}`,
+                    border: `1px solid ${running ? C.accentLine : C.border}`,
                     cursor: running ? "default" : "pointer",
                     display: "flex",
                     alignItems: "center",
@@ -2462,6 +2476,17 @@ function DashboardControlRow({
     )
 }
 
+// Status pill that celebrates when a test run finishes passing.
+function WinPill({ running, status }: { running: boolean; status: CtlStatus }) {
+    const ref = React.useRef<HTMLSpanElement>(null)
+    useWinOnFinish(running, status === "passing", ref)
+    return (
+        <span ref={ref} style={{ display: "inline-flex", borderRadius: 999 }}>
+            <StatusPill s={running ? "running" : status} />
+        </span>
+    )
+}
+
 // ============ FRAMEWORKS LIST VIEW ============
 
 function FrameworksListView({
@@ -2474,24 +2499,15 @@ function FrameworksListView({
     return (
         <div className="zview-in" style={{ maxWidth: 1280, margin: "0 auto" }}>
             <div style={{ marginBottom: 24 }}>
-                <div
-                    style={{
-                        font: `400 13px/16px ${FONT}`,
-                        color: C.textSubtle,
-                        marginBottom: 4,
-                    }}
-                >
-                    Frameworks
-                </div>
                 <h1
                     style={{
                         margin: 0,
-                        font: `600 28px/36px ${FONT}`,
-                        letterSpacing: "-0.025em",
+                        font: `500 34px/40px ${SERIF}`,
+                        letterSpacing: "-0.012em",
                         color: C.text,
                     }}
                 >
-                    Active compliance programs
+                    Frameworks
                 </h1>
                 <div
                     style={{
@@ -2510,19 +2526,9 @@ function FrameworksListView({
                     gap: 12,
                 }}
             >
-                {(FRAMEWORKS as Framework[]).map((f) => {
-                    const fwControls = effectiveControls.filter(
-                        (c) => c.fw === f.fw
-                    )
-                    return (
-                        <FrameworkListCard
-                            key={f.id}
-                            f={f}
-                            controlsInLib={fwControls.length}
-                            onClick={() => onSelect(f)}
-                        />
-                    )
-                })}
+                {(FRAMEWORKS as Framework[]).map((f) => (
+                    <FrameworkListCard key={f.id} f={f} onClick={() => onSelect(f)} />
+                ))}
             </div>
         </div>
     )
@@ -2530,11 +2536,9 @@ function FrameworksListView({
 
 function FrameworkListCard({
     f,
-    controlsInLib,
     onClick,
 }: {
     f: Framework
-    controlsInLib: number
     onClick: () => void
 }) {
     const pct = Math.round((f.passing / f.total) * 100)
@@ -2565,27 +2569,6 @@ function FrameworkListCard({
                         alignItems: "flex-start",
                     }}
                 >
-                    <div
-                        style={{
-                            width: 36,
-                            height: 36,
-                            borderRadius: 8,
-                            background:
-                                f.status === "attention"
-                                    ? C.warningBg
-                                    : C.successBg,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                        }}
-                    >
-                        <Icon
-                            n="shield"
-                            s={18}
-                            c={f.status === "attention" ? C.warning : C.success}
-                        />
-                    </div>
                     <div>
                         <div
                             style={{
@@ -2606,7 +2589,7 @@ function FrameworkListCard({
                         </div>
                     </div>
                 </div>
-                <StatusPill s={f.status} />
+                {f.status === "attention" && <StatusPill s={f.status} />}
             </div>
             <div
                 style={{
@@ -2655,38 +2638,6 @@ function FrameworkListCard({
                     </span>{" "}
                     in review
                 </div>
-                <div
-                    style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                    }}
-                    title={`${controlsInLib} of ${f.total} controls tracked in the library`}
-                >
-                    <span style={{ color: C.textMuted, fontWeight: 500 }}>
-                        {controlsInLib}
-                    </span>
-                    <span style={{ color: C.textSubtle }}>/ {f.total}</span>
-                    <div
-                        style={{
-                            width: 36,
-                            height: 4,
-                            background: "var(--c-track-fill)",
-                            borderRadius: 999,
-                            overflow: "hidden",
-                            marginLeft: 2,
-                        }}
-                    >
-                        <div
-                            style={{
-                                width: `${Math.min(100, Math.round((controlsInLib / Math.max(1, f.total)) * 100))}%`,
-                                height: "100%",
-                                background: C.textMuted,
-                                borderRadius: 999,
-                            }}
-                        />
-                    </div>
-                </div>
             </div>
             <div
                 style={{
@@ -2704,24 +2655,11 @@ function FrameworkListCard({
                     Audited by{" "}
                     <span style={{ color: C.text }}>{f.auditor}</span>
                 </div>
-                <div>·</div>
                 <div title={`Renews ${formatRenewal(f.renewal)}`}>
                     Renews{" "}
                     <span style={{ color: C.text }}>
                         {formatRenewal(f.renewal)}
                     </span>
-                </div>
-                <div style={{ flex: 1 }} />
-                <div
-                    style={{
-                        font: `500 12px/16px ${FONT}`,
-                        color: C.accentSoft,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                    }}
-                >
-                    Open <Icon n="arrowRight" s={11} c={C.accentSoft} />
                 </div>
             </div>
         </div>
@@ -2749,7 +2687,17 @@ function FrameworkDetailView({
     onExport: () => void
     onSelectControl: (id: string) => void
 }) {
-    const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set())
+    // Open only the sections with work in them; fully passing (or empty)
+    // sections start folded so gaps and reviews surface first.
+    const [collapsed, setCollapsed] = React.useState<Set<string>>(() => {
+        const needsWork = new Set(
+            effectiveControls
+                .filter((c) => c.fw === framework.fw && c.status !== "passing")
+                .map((c) => getSectionKey(c))
+        )
+        const order: string[] = SECTION_ORDER[framework.fw] ?? []
+        return new Set(order.filter((k) => !needsWork.has(k)))
+    })
     const fwControls = React.useMemo(
         () => effectiveControls.filter((c) => c.fw === framework.fw),
         [effectiveControls, framework.fw]
@@ -2783,7 +2731,6 @@ function FrameworkDetailView({
         })
     const expandAll = () => setCollapsed(new Set())
     const collapseAll = () => setCollapsed(new Set(grouped.map((g) => g.key)))
-    const allExpanded = collapsed.size === 0
     const allCollapsed = collapsed.size === grouped.length
     const runAllNonPassing = () => {
         fwControls
@@ -2835,31 +2782,6 @@ function FrameworkDetailView({
                         minWidth: 0,
                     }}
                 >
-                    <div
-                        style={{
-                            width: 48,
-                            height: 48,
-                            borderRadius: 12,
-                            background:
-                                framework.status === "attention"
-                                    ? C.warningBg
-                                    : C.successBg,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                        }}
-                    >
-                        <Icon
-                            n="shield"
-                            s={24}
-                            c={
-                                framework.status === "attention"
-                                    ? C.warning
-                                    : C.success
-                            }
-                        />
-                    </div>
                     <div style={{ minWidth: 0 }}>
                         <div
                             style={{
@@ -2872,8 +2794,8 @@ function FrameworkDetailView({
                             <h1
                                 style={{
                                     margin: 0,
-                                    font: `600 26px/32px ${FONT}`,
-                                    letterSpacing: "-0.025em",
+                                    font: `500 34px/40px ${SERIF}`,
+                                    letterSpacing: "-0.012em",
                                     color: C.text,
                                 }}
                             >
@@ -2966,10 +2888,8 @@ function FrameworkDetailView({
                         </div>
                         <div
                             style={{
-                                font: `500 11px/14px ${FONT}`,
+                                font: `500 12px/16px ${FONT}`,
                                 color: C.textSubtle,
-                                letterSpacing: 0.3,
-                                textTransform: "uppercase",
                             }}
                         >
                             Coverage
@@ -3050,7 +2970,6 @@ function FrameworkDetailView({
                         value={relTime(
                             PAGE_LOAD_MS - framework.lastTestMin * 60000
                         )}
-                        mono
                     />
                     <MetaItem
                         label="Next renewal"
@@ -3059,7 +2978,7 @@ function FrameworkDetailView({
                     <div style={{ flex: 1 }} />
                     <div
                         style={{
-                            font: `400 11px/14px ${MONO}`,
+                            font: `400 11px/14px ${FONT}`,
                             color: C.textSubtle,
                         }}
                     >
@@ -3212,183 +3131,120 @@ function SectionGroup({
                 opacity: isEmpty ? 0.55 : 1,
             }}
         >
-            <button
+            <div
+                role="button"
+                tabIndex={isEmpty ? -1 : 0}
+                aria-expanded={!collapsed}
                 onClick={isEmpty ? undefined : onToggle}
+                onKeyDown={(e) => {
+                    if (!isEmpty && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault()
+                        onToggle()
+                    }
+                }}
                 className="znav"
-                disabled={isEmpty}
                 style={{
-                    width: "100%",
-                    display: "flex",
+                    display: "grid",
+                    // Fixed columns so every section's bar and counts line up.
+                    gridTemplateColumns: "12px minmax(0, 1fr) 220px 64px 56px 40px 40px",
                     alignItems: "center",
                     gap: 14,
                     padding: "14px 18px",
-                    background: "transparent",
-                    border: "none",
                     cursor: isEmpty ? "default" : "pointer",
-                    textAlign: "left",
                 }}
             >
-                <Icon
-                    n={collapsed ? "caretRight" : "caretDown"}
-                    s={12}
-                    c={C.textMuted}
-                   
-                />
+                <Icon n={collapsed ? "caretRight" : "caretDown"} s={12} c={C.textMuted} />
                 <div
                     style={{
-                        display: "flex",
-                        alignItems: "baseline",
-                        gap: 8,
-                        minWidth: 0,
-                        flexShrink: 0,
+                        font: `600 14px/18px ${FONT}`,
+                        color: C.text,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
                     }}
                 >
-                    <div
-                        style={{
-                            font: `500 12px/16px ${MONO}`,
-                            color: C.accentSoft,
-                            padding: "2px 8px",
-                            background: C.accentBg,
-                            borderRadius: 4,
-                        }}
-                    >
-                        {sectionKey}
-                    </div>
-                    <div
-                        style={{ font: `600 14px/18px ${FONT}`, color: C.text }}
-                    >
-                        {label}
-                    </div>
+                    {label}
                 </div>
-                <div style={{ flex: 1, maxWidth: 280, marginLeft: 12 }}>
+                <div style={{ visibility: isEmpty ? "hidden" : "visible" }}>
                     <ProgressBar value={pct} height={4} />
                 </div>
-                {!isEmpty && sectionPassing < total && (
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            controls
-                                .filter((c) => c.status !== "passing")
-                                .forEach((c) => {
-                                    if (!runningTests.has(c.id)) runTest(c.id)
-                                })
-                        }}
-                        className="zbtn"
-                        title={`Run ${total - sectionPassing} non-passing controls in ${sectionKey}`}
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 4,
-                            padding: "4px 8px",
-                            borderRadius: 6,
-                            background: C.surfaceHi,
-                            border: `1px solid ${C.border}`,
-                            font: `500 11px/14px ${FONT}`,
-                            color: C.textMuted,
-                            cursor: "pointer",
-                            flexShrink: 0,
-                            whiteSpace: "nowrap",
-                        }}
-                    >
-                        <Icon n="play" s={9} c={C.textMuted} />
-                        Run {total - sectionPassing}
-                    </button>
-                )}
+                <div style={{ justifySelf: "end" }}>
+                    {!isEmpty && sectionPassing < total && (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                controls
+                                    .filter((c) => c.status !== "passing")
+                                    .forEach((c) => {
+                                        if (!runningTests.has(c.id)) runTest(c.id)
+                                    })
+                            }}
+                            className="zbtn"
+                            title={`Run ${total - sectionPassing} non-passing controls in ${label}`}
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 4,
+                                padding: "4px 8px",
+                                borderRadius: 6,
+                                background: "transparent",
+                                border: `1px solid ${C.border}`,
+                                font: `500 11px/14px ${FONT}`,
+                                color: C.textMuted,
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                            }}
+                        >
+                            <Icon n="play" s={9} c={C.textMuted} />
+                            Run {total - sectionPassing}
+                        </button>
+                    )}
+                </div>
                 <div
                     style={{
                         display: "flex",
-                        alignItems: "center",
-                        gap: 14,
-                        font: `400 12px/16px ${FONT}`,
-                        color: C.textSubtle,
-                        flexShrink: 0,
+                        justifyContent: "flex-end",
+                        gap: 10,
+                        font: `600 12px/16px ${FONT}`,
                     }}
                 >
                     {sectionGap > 0 && (
-                        <div
-                            style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 4,
-                            }}
-                        >
-                            <div
-                                style={{
-                                    width: 5,
-                                    height: 5,
-                                    borderRadius: 999,
-                                    background: C.danger,
-                                }}
-                            />
-                            <span style={{ color: C.danger, fontWeight: 600 }}>
-                                {sectionGap}
-                            </span>
-                        </div>
+                        <span title={`${sectionGap} gaps`} style={{ display: "flex", alignItems: "center", gap: 4, color: C.danger }}>
+                            <span style={{ width: 5, height: 5, borderRadius: 999, background: C.danger }} />
+                            {sectionGap}
+                        </span>
                     )}
                     {sectionReview > 0 && (
-                        <div
-                            style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 4,
-                            }}
-                        >
-                            <div
-                                style={{
-                                    width: 5,
-                                    height: 5,
-                                    borderRadius: 999,
-                                    background: C.warning,
-                                }}
-                            />
-                            <span style={{ color: C.warning, fontWeight: 600 }}>
-                                {sectionReview}
-                            </span>
-                        </div>
+                        <span title={`${sectionReview} in review`} style={{ display: "flex", alignItems: "center", gap: 4, color: C.warning }}>
+                            <span style={{ width: 5, height: 5, borderRadius: 999, background: C.warning }} />
+                            {sectionReview}
+                        </span>
                     )}
-                    {isEmpty ? (
-                        <div
-                            style={{
-                                padding: "3px 8px",
-                                borderRadius: 999,
-                                background: "var(--c-track-fill)",
-                                font: `500 10px/14px ${FONT}`,
-                                color: C.textSubtle,
-                                letterSpacing: 0.4,
-                                textTransform: "uppercase",
-                            }}
-                        >
-                            0 tracked
-                        </div>
-                    ) : (
-                        <div
-                            style={{
-                                font: `500 12px/16px ${FONT}`,
-                                color: C.text,
-                            }}
-                        >
-                            {sectionPassing}/{total}
-                        </div>
-                    )}
-                    <div
-                        style={{
-                            font: `600 14px/18px ${FONT}`,
-                            color:
-                                pct >= 85
-                                    ? C.success
-                                    : pct >= 70
-                                      ? C.accentSoft
-                                      : C.warning,
-                            minWidth: 44,
-                            textAlign: "right",
-                            visibility: isEmpty ? "hidden" : "visible",
-                        }}
-                    >
-                        {pct}%
-                    </div>
                 </div>
-            </button>
+                <div
+                    style={{
+                        font: `500 12px/16px ${FONT}`,
+                        color: isEmpty ? C.textSubtle : C.textMuted,
+                        textAlign: "right",
+                        whiteSpace: "nowrap",
+                        fontVariantNumeric: "tabular-nums",
+                    }}
+                >
+                    {isEmpty ? "None" : `${sectionPassing}/${total}`}
+                </div>
+                <div
+                    style={{
+                        font: `600 13px/18px ${FONT}`,
+                        color: C.text,
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                        visibility: isEmpty ? "hidden" : "visible",
+                    }}
+                >
+                    {pct}%
+                </div>
+            </div>
             {!collapsed && (
                 <div style={{ borderTop: `1px solid ${C.border}` }}>
                     {controls.map((c, i) => (
@@ -3471,13 +3327,13 @@ function SectionControlRow({
                         marginTop: 2,
                     }}
                 >
-                    {c.owner} · {c.evidence} evidence · {relTime(PAGE_LOAD_MS - c.lastTestMin * 60000)}
+                    {c.owner} · {c.evidence} evidence
                 </div>
             </div>
-            <StatusPill s={running ? "running" : c.status} />
+            <WinPill running={running} status={c.status} />
             <div
                 style={{
-                    font: `400 11px/14px ${MONO}`,
+                    font: `400 11px/14px ${FONT}`,
                     color: C.textSubtle,
                     whiteSpace: "nowrap",
                 }}
@@ -3496,7 +3352,7 @@ function SectionControlRow({
                     height: 26,
                     borderRadius: 6,
                     background: running ? C.accentBg : "transparent",
-                    border: `1px solid ${running ? "rgba(124,92,255,0.3)" : C.border}`,
+                    border: `1px solid ${running ? C.accentLine : C.border}`,
                     cursor: running ? "default" : "pointer",
                     display: "flex",
                     alignItems: "center",
@@ -3545,7 +3401,7 @@ function ControlsView({
     >
     onAddControl: () => void
     onExportAll: () => void
-    onExportSelected: (count: number) => void
+    onExportSelected: (ids: Set<string>) => void
     searchQuery: string
     setSearchQuery: (s: string) => void
     seedStatusFilter?: CtlStatus | null
@@ -3691,7 +3547,7 @@ function ControlsView({
         }, 1400)
     }
     const bulkExport = () => {
-        onExportSelected(selected.size)
+        onExportSelected(selected)
         setSelected(new Set())
     }
 
@@ -3725,24 +3581,15 @@ function ControlsView({
                 }}
             >
                 <div>
-                    <div
-                        style={{
-                            font: `400 13px/16px ${FONT}`,
-                            color: C.textSubtle,
-                            marginBottom: 4,
-                        }}
-                    >
-                        Controls library
-                    </div>
                     <h1
                         style={{
                             margin: 0,
-                            font: `600 28px/36px ${FONT}`,
-                            letterSpacing: "-0.025em",
+                            font: `500 34px/40px ${SERIF}`,
+                            letterSpacing: "-0.012em",
                             color: C.text,
                         }}
                     >
-                        All controls
+                        Controls
                     </h1>
                     <div
                         style={{
@@ -3769,7 +3616,7 @@ function ControlsView({
                         style={btnPrimary}
                         onClick={onAddControl}
                     >
-                        <Icon n="plus" s={12} c={C.bg} />
+                        <Icon n="plus" s={12} c={C.primaryFg} />
                         Add control
                     </button>
                 </div>
@@ -3835,7 +3682,7 @@ function ControlsView({
                             padding: "5px 10px",
                             borderRadius: 999,
                             background: C.accentBg,
-                            border: `1px solid rgba(124,92,255,0.45)`,
+                            border: `1px solid ${C.accentLine}`,
                             cursor: "pointer",
                             font: `500 11px/14px ${FONT}`,
                             color: C.accentSoft,
@@ -3870,12 +3717,11 @@ function ControlsView({
                     </div>
                     <div
                         style={{
-                            font: `500 11px/14px ${FONT}`,
+                            font: `400 12px/16px ${FONT}`,
                             color: C.textSubtle,
-                            letterSpacing: 0.3,
                         }}
                     >
-                        COVERAGE
+                        Coverage
                     </div>
                 </div>
             </div>
@@ -3921,7 +3767,7 @@ function ControlsView({
                         Passing
                         <span
                             style={{
-                                font: `500 11px/14px ${MONO}`,
+                                font: `500 11px/14px ${FONT}`,
                                 opacity: 0.7,
                                 marginLeft: 2,
                             }}
@@ -3937,7 +3783,7 @@ function ControlsView({
                         Review
                         <span
                             style={{
-                                font: `500 11px/14px ${MONO}`,
+                                font: `500 11px/14px ${FONT}`,
                                 opacity: 0.7,
                                 marginLeft: 2,
                             }}
@@ -3953,7 +3799,7 @@ function ControlsView({
                         Gap
                         <span
                             style={{
-                                font: `500 11px/14px ${MONO}`,
+                                font: `500 11px/14px ${FONT}`,
                                 opacity: 0.7,
                                 marginLeft: 2,
                             }}
@@ -3974,7 +3820,7 @@ function ControlsView({
                             padding: "6px 10px",
                             background:
                                 ownerFilter !== "all" ? C.accentBg : C.surface,
-                            border: `1px solid ${ownerFilter !== "all" ? "rgba(124,92,255,0.3)" : C.border}`,
+                            border: `1px solid ${ownerFilter !== "all" ? C.accentLine : C.border}`,
                             borderRadius: 6,
                             cursor: "pointer",
                             font: `500 12px/16px ${FONT}`,
@@ -4027,7 +3873,7 @@ function ControlsView({
                                     borderRadius: 8,
                                     padding: 4,
                                     zIndex: 31,
-                                    boxShadow: "0 12px 32px rgba(0,0,0,0.4)",
+                                    boxShadow: C.shadowLg,
                                     animation: "zfade 140ms ease",
                                     maxHeight: 280,
                                     overflowY: "auto",
@@ -4104,8 +3950,8 @@ function ControlsView({
                             alignItems: "center",
                             gap: 12,
                             padding: "10px 18px",
-                            background: "rgba(124,92,255,0.10)",
-                            borderBottom: `1px solid rgba(124,92,255,0.22)`,
+                            background: C.accentBg,
+                            borderBottom: `1px solid ${C.accentLine}`,
                         }}
                     >
                         <div
@@ -4130,7 +3976,7 @@ function ControlsView({
                                     width: 20,
                                     height: 20,
                                     borderRadius: 4,
-                                    background: "rgba(124,92,255,0.18)",
+                                    background: C.accentBg,
                                     border: "none",
                                     cursor: "pointer",
                                     display: "flex",
@@ -4260,10 +4106,8 @@ function ControlsView({
                     />
                     <div
                         style={{
-                            font: `500 11px/14px ${FONT}`,
+                            font: `500 12px/16px ${FONT}`,
                             color: C.textSubtle,
-                            letterSpacing: 0.3,
-                            textTransform: "uppercase",
                         }}
                     >
                         Control
@@ -4437,10 +4281,8 @@ function SummaryStat({
         >
             <div
                 style={{
-                    font: `500 11px/14px ${FONT}`,
+                    font: `500 12px/16px ${FONT}`,
                     color: active ? color : C.textSubtle,
-                    letterSpacing: 0.3,
-                    textTransform: "uppercase",
                 }}
             >
                 {label}
@@ -4488,7 +4330,7 @@ function ControlTableRow({
                 padding: "12px 18px",
                 borderBottom: last ? "none" : `1px solid ${C.border}`,
                 alignItems: "center",
-                background: checked ? "rgba(124,92,255,0.04)" : undefined,
+                background: checked ? C.accentTint : undefined,
                 transition: "background 100ms",
                 position: "relative",
                 cursor: "pointer",
@@ -4549,17 +4391,17 @@ function ControlTableRow({
             </div>
             <div
                 style={{
-                    font: `500 13px/18px ${MONO}`,
+                    font: `500 13px/18px ${FONT}`,
                     color: c.evidence === 0 ? C.danger : C.text,
                     textAlign: "right",
                 }}
             >
                 {c.evidence}
             </div>
-            <StatusPill s={running ? "running" : c.status} />
+            <WinPill running={running} status={c.status} />
             <div
                 style={{
-                    font: `400 11px/14px ${MONO}`,
+                    font: `400 11px/14px ${FONT}`,
                     color: C.textSubtle,
                     whiteSpace: "nowrap",
                 }}
@@ -4578,7 +4420,7 @@ function ControlTableRow({
                     height: 26,
                     borderRadius: 6,
                     background: running ? C.accentBg : "transparent",
-                    border: `1px solid ${running ? "rgba(124,92,255,0.3)" : C.border}`,
+                    border: `1px solid ${running ? C.accentLine : C.border}`,
                     cursor: running ? "default" : "pointer",
                     display: "flex",
                     alignItems: "center",
@@ -4615,7 +4457,7 @@ function AgentRunPanel({
     ) => void
     initialTab?: "timeline" | "chat"
 }) {
-    const [tick, setTick] = React.useState(0)
+    const [, setTick] = React.useState(0)
     const [tab, setTab] = React.useState<"timeline" | "chat">(initialTab)
     const isRunning = activity.status === "running"
 
@@ -4671,7 +4513,7 @@ function AgentRunPanel({
                 "Policy Agent": "book",
                 "Remediation Agent": "shieldCheck",
                 "Controls Agent": "shield",
-                "Director Agent": "sparkle",
+                "Director Agent": "hierarchy",
             } as Record<string, keyof typeof I>
         )[activity.agent] || "robot"
 
@@ -4685,7 +4527,7 @@ function AgentRunPanel({
                 width: 460,
                 background: C.surface,
                 borderLeft: `1px solid ${C.borderHi}`,
-                boxShadow: "-20px 0 60px rgba(0,0,0,0.4)",
+                boxShadow: C.shadowLg,
                 zIndex: 80,
                 display: "flex",
                 flexDirection: "column",
@@ -4713,9 +4555,7 @@ function AgentRunPanel({
                             width: 38,
                             height: 38,
                             borderRadius: 10,
-                            background: isRunning
-                                ? `linear-gradient(135deg, ${C.accent}, ${C.accentSoft})`
-                                : C.successBg,
+                            background: isRunning ? C.accentBg : C.successBg,
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -4725,7 +4565,7 @@ function AgentRunPanel({
                         <Icon
                             n={agentIcon}
                             s={18}
-                            c={isRunning ? C.text : C.success}
+                            c={isRunning ? C.accentSoft : C.success}
                         />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -4787,7 +4627,7 @@ function AgentRunPanel({
                     <StatusPill s={isComplete ? "complete" : "running"} />
                     <div
                         style={{
-                            font: `500 11px/14px ${MONO}`,
+                            font: `500 11px/14px ${FONT}`,
                             color: C.textSubtle,
                         }}
                     >
@@ -4889,7 +4729,7 @@ function AgentRunPanel({
                             ) : (
                                 <>
                                     <Icon
-                                        n="sparkle"
+                                        n="message"
                                         s={12}
                                         c={active ? C.accentSoft : C.textMuted}
                                     />
@@ -4947,7 +4787,7 @@ function AgentRunPanel({
                             marginTop: 16,
                             padding: "14px 16px",
                             background: C.successBg,
-                            border: `1px solid rgba(0,208,132,0.22)`,
+                            border: `1px solid ${C.successLine}`,
                             borderRadius: 10,
                             display: "flex",
                             alignItems: "center",
@@ -4966,7 +4806,7 @@ function AgentRunPanel({
                                 flexShrink: 0,
                             }}
                         >
-                            <Icon n="check" s={13} c={C.bg} />
+                            <Icon n="check" s={13} c={C.primaryFg} />
                         </div>
                         <div style={{ flex: 1 }}>
                             <div
@@ -5070,12 +4910,12 @@ function TimelineStep({
                     </div>
                     <div
                         style={{
-                            font: `400 11px/14px ${MONO}`,
+                            font: `400 11px/14px ${FONT}`,
                             color: C.textSubtle,
                             flexShrink: 0,
                         }}
                     >
-                        {state === "pending" ? "—" : formatElapsed(step.at)}
+                        {state === "pending" ? "-" : formatElapsed(step.at)}
                     </div>
                 </div>
                 {state === "active" && step.sub && (
@@ -5196,193 +5036,7 @@ function OutputBlock({
     )
 }
 
-// ============ TOAST ============
-
-function ToastStack({
-    toasts,
-}: {
-    toasts: Array<{
-        id: string
-        agent: string
-        controlId: string
-        action: string
-        note?: string
-    }>
-}) {
-    return (
-        <div
-            style={{
-                position: "absolute",
-                bottom: 24,
-                right: 24,
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-                zIndex: 60,
-                pointerEvents: "none",
-            }}
-        >
-            {toasts.map((t) => (
-                <Toast key={t.id} {...t} />
-            ))}
-        </div>
-    )
-}
-
-function Toast({
-    agent,
-    controlId,
-    action,
-    note,
-}: {
-    agent: string
-    controlId: string
-    action: string
-    note?: string
-}) {
-    return (
-        <div
-            className="ztoast"
-            style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "12px 14px",
-                background: C.surfaceHi,
-                border: `1px solid ${C.borderHi}`,
-                borderLeft: `3px solid ${C.success}`,
-                borderRadius: 8,
-                boxShadow: "0 12px 32px rgba(0,0,0,0.5)",
-                minWidth: 320,
-                maxWidth: 360,
-                pointerEvents: "auto",
-            }}
-        >
-            <div
-                style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 999,
-                    background: C.successBg,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                }}
-            >
-                <Icon n="check" s={12} c={C.success} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ font: `500 13px/18px ${FONT}`, color: C.text }}>
-                    <span style={{ fontWeight: 600 }}>{agent}</span>{" "}
-                    <span style={{ color: C.textMuted }}>{action}</span>{" "}
-                    <span
-                        style={{
-                            font: `500 12px/14px ${MONO}`,
-                            color: C.accentSoft,
-                        }}
-                    >
-                        {controlId}
-                    </span>
-                </div>
-                <div
-                    style={{
-                        font: `400 11px/14px ${FONT}`,
-                        color: C.textSubtle,
-                        marginTop: 2,
-                    }}
-                >
-                    Just now · {note ?? "auto-resolved"}
-                </div>
-            </div>
-        </div>
-    )
-}
-
 // ============ EMPTY VIEW ============
-
-function EmptyView({ nav }: { nav: string }) {
-    const labels: Record<
-        string,
-        { title: string; sub: string; icon: keyof typeof I }
-    > = {
-        evidence: {
-            title: "Evidence vault",
-            sub: "Documents, screenshots, and attestations, auto-collected by agents.",
-            icon: "fileText",
-        },
-        risks: {
-            title: "Risk register",
-            sub: "Enterprise and third-party risks with AI-driven scoring.",
-            icon: "warning",
-        },
-        vendors: {
-            title: "Vendor portal",
-            sub: "Autonomous third-party risk management for every vendor.",
-            icon: "globe",
-        },
-        policies: {
-            title: "Policy library",
-            sub: "AI-maintained policies mapped to active frameworks.",
-            icon: "book",
-        },
-        agents: {
-            title: "Agent fleet",
-            sub: "Specialist AI teammates: Evidence, Risk, Controls, Questionnaire, Remediation.",
-            icon: "robot",
-        },
-    }
-    const info = labels[nav] || {
-        title: nav,
-        sub: "Coming soon.",
-        icon: "house" as const,
-    }
-    return (
-        <div
-            style={{
-                maxWidth: 1280,
-                margin: "0 auto",
-                padding: "80px 0",
-                textAlign: "center",
-            }}
-        >
-            <div
-                style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 16,
-                    background: C.accentBg,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    margin: "0 auto 20px",
-                }}
-            >
-                <Icon n={info.icon} s={28} c={C.accentSoft} />
-            </div>
-            <h2
-                style={{
-                    margin: "0 0 8px 0",
-                    font: `600 24px/30px ${FONT}`,
-                    letterSpacing: "-0.025em",
-                    color: C.text,
-                }}
-            >
-                {info.title}
-            </h2>
-            <div
-                style={{
-                    font: `400 14px/22px ${FONT}`,
-                    color: C.textMuted,
-                    maxWidth: 460,
-                    margin: "0 auto",
-                }}
-            >
-                {info.sub}
-            </div>
-        </div>
-    )
-}
 
 // ============ NEW ASSESSMENT MODAL ============
 //
@@ -5391,8 +5045,7 @@ function EmptyView({ nav }: { nav: string }) {
 //   2. running   · Director Agent orchestrates 5 specialist agents (~1.2s/step)
 //   3. complete  · summary card · close or "View results"
 //
-// Modal owns all of its own state. Parent only opens/closes it. onComplete
-// fires once the run reaches the final step so the parent can push a toast.
+// Modal owns all of its own state. Parent only opens/closes it.
 
 type AssessConfig = {
     framework: Framework
@@ -5423,19 +5076,18 @@ function defaultAssessmentName(fw: Framework): string {
 function NewAssessmentModal({
     open,
     close,
-    onComplete,
 }: {
     open: boolean
     close: () => void
-    onComplete?: (info: {
-        framework: string
-        name: string
-        gaps: number
-    }) => void
 }) {
     const [phase, setPhase] = React.useState<
         "configure" | "running" | "complete"
     >("configure")
+    // The run finished · make completion feel like a win.
+    const winRef = React.useRef<HTMLDivElement>(null)
+    React.useEffect(() => {
+        if (phase === "complete") celebrate(winRef.current)
+    }, [phase])
     const [config, setConfig] = React.useState<AssessConfig>(() => ({
         framework: FRAMEWORKS[0],
         name: defaultAssessmentName(FRAMEWORKS[0]),
@@ -5468,43 +5120,18 @@ function NewAssessmentModal({
         }
     }, [open])
 
-    // Step animation runs only during the running phase. When the last step
-    // finishes, we transition to "complete" and fire onComplete exactly once.
+    // Step animation runs only during the running phase, then completes.
     React.useEffect(() => {
         if (phase !== "running") return
         if (step >= 4) {
             const finish = setTimeout(() => {
                 setPhase("complete")
-                const cfg = configRef.current
-                const gaps = Math.max(
-                    0,
-                    (cfg.framework.gaps ?? 0) +
-                        (cfg.framework.review ?? 0) -
-                        Math.floor(Math.random() * 2)
-                )
-                onCompleteRef.current?.({
-                    framework: cfg.framework.name,
-                    name: cfg.name,
-                    gaps,
-                })
             }, 600)
             return () => clearTimeout(finish)
         }
         const t = setTimeout(() => setStep((s) => s + 1), 1200)
         return () => clearTimeout(t)
     }, [phase, step])
-
-    // Fire the completion callback once per run when entering complete phase.
-    // We deliberately depend only on `phase`; calling onComplete inside the
-    // running effect's transition keeps fire-count to exactly one per run.
-    const onCompleteRef = React.useRef(onComplete)
-    React.useEffect(() => {
-        onCompleteRef.current = onComplete
-    }, [onComplete])
-    const configRef = React.useRef(config)
-    React.useEffect(() => {
-        configRef.current = config
-    }, [config])
 
     const onFrameworkChange = (fwKey: string) => {
         const next = FRAMEWORKS.find((f: Framework) => f.fw === fwKey)
@@ -5582,7 +5209,7 @@ function NewAssessmentModal({
                 }
                 subtitle={
                     phase === "configure"
-                        ? "Set scope, sources, and target before launching"
+                        ? undefined
                         : assessmentId
                 }
                 close={close}
@@ -5736,7 +5363,7 @@ function NewAssessmentModal({
                                                 background: on
                                                     ? C.accentBg
                                                     : C.surface,
-                                                border: `1px solid ${on ? "rgba(124,92,255,0.45)" : C.border}`,
+                                                border: `1px solid ${on ? C.accentLine : C.border}`,
                                                 borderRadius: 999,
                                                 font: `500 12px/16px ${FONT}`,
                                                 color: on
@@ -5764,7 +5391,7 @@ function NewAssessmentModal({
 
                         <Field
                             label="Target completion"
-                            hint="Optional · informs prioritisation"
+                            hint="Optional"
                         >
                             <ThemedInput
                                 value={config.dueDate}
@@ -5826,7 +5453,7 @@ function NewAssessmentModal({
                                                 : done
                                                   ? C.surface
                                                   : "transparent",
-                                            border: `1px solid ${active ? "rgba(124,92,255,0.3)" : done ? C.border : "transparent"}`,
+                                            border: `1px solid ${active ? C.accentLine : done ? C.border : "transparent"}`,
                                             borderRadius: 8,
                                             opacity:
                                                 !active && !done ? 0.4 : 1,
@@ -5913,22 +5540,24 @@ function NewAssessmentModal({
                         }}
                     >
                         <div
+                            ref={winRef}
                             style={{
                                 display: "flex",
                                 alignItems: "center",
                                 gap: 12,
                                 padding: 14,
                                 background: C.successBg,
-                                border: `1px solid rgba(0,208,132,0.3)`,
+                                border: `1px solid ${C.successLine}`,
                                 borderRadius: 10,
                             }}
                         >
                             <div
+                                className="zwin-check"
                                 style={{
                                     width: 30,
                                     height: 30,
                                     borderRadius: 999,
-                                    background: "rgba(0,208,132,0.25)",
+                                    background: C.successBg,
                                     display: "flex",
                                     alignItems: "center",
                                     justifyContent: "center",
@@ -6082,10 +5711,8 @@ function Field({
             >
                 <div
                     style={{
-                        font: `500 11px/14px ${FONT}`,
+                        font: `500 12px/16px ${FONT}`,
                         color: C.textMuted,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.04em",
                     }}
                 >
                     {label}
@@ -6213,7 +5840,7 @@ function ScopeChip({
             style={{
                 padding: "8px 12px",
                 background: active ? C.accentBg : C.surface,
-                border: `1px solid ${active ? "rgba(124,92,255,0.45)" : C.border}`,
+                border: `1px solid ${active ? C.accentLine : C.border}`,
                 borderRadius: 8,
                 font: `500 12px/16px ${FONT}`,
                 color: active ? C.accentSoft : C.textMuted,
@@ -6254,10 +5881,8 @@ function SummaryStatBlock({
             </div>
             <div
                 style={{
-                    font: `500 10px/14px ${FONT}`,
+                    font: `500 12px/16px ${FONT}`,
                     color: C.textMuted,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
                     marginTop: 2,
                 }}
             >

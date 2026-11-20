@@ -9,9 +9,9 @@ import {
     ModalBody,
     ModalFooter,
     ProgressBar,
-    btnPrimary,
     btnSecondary,
-} from "./DashboardLib_1"
+    CopyButton,
+} from "./DashboardLib"
 import {
     type Framework,
     FRAMEWORKS,
@@ -28,11 +28,9 @@ const PUBLIC_URL = "https://trust.acme-corp.com"
 export function TrustCenterModal({
     open,
     close,
-    onAction,
 }: {
     open: boolean
     close: () => void
-    onAction?: (label: string, note?: string) => void
 }) {
     const overall = React.useMemo(() => {
         const totalControls = FRAMEWORKS.reduce(
@@ -68,8 +66,8 @@ export function TrustCenterModal({
                             alignItems: "center",
                             gap: 14,
                             padding: 16,
-                            background: `linear-gradient(135deg, rgba(124,92,255,0.14), rgba(124,92,255,0.04))`,
-                            border: `1px solid rgba(124,92,255,0.22)`,
+                            background: C.accentTint,
+                            border: `1px solid ${C.accentLine}`,
                             borderRadius: 12,
                         }}
                     >
@@ -78,22 +76,20 @@ export function TrustCenterModal({
                                 width: 44,
                                 height: 44,
                                 borderRadius: 12,
-                                background: `linear-gradient(135deg, ${C.accent}, ${C.accentSoft})`,
+                                background: C.accentBg,
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
                                 flexShrink: 0,
                             }}
                         >
-                            <Icon n="shieldCheck" s={22} c={C.text} />
+                            <Icon n="shieldCheck" s={22} c={C.accentSoft} />
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <div
                                 style={{
-                                    font: `400 11px/14px ${FONT}`,
+                                    font: `500 12px/16px ${FONT}`,
                                     color: C.textSubtle,
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.06em",
                                 }}
                             >
                                 Overall posture
@@ -124,10 +120,8 @@ export function TrustCenterModal({
                     <div>
                         <div
                             style={{
-                                font: `500 11px/14px ${FONT}`,
+                                font: `500 12px/16px ${FONT}`,
                                 color: C.textMuted,
-                                textTransform: "uppercase",
-                                letterSpacing: "0.04em",
                                 marginBottom: 10,
                             }}
                         >
@@ -240,23 +234,7 @@ export function TrustCenterModal({
                         >
                             {PUBLIC_URL}
                         </div>
-                        <button
-                            type="button"
-                            className="zbtn"
-                            style={{
-                                ...btnSecondary,
-                                padding: "6px 10px",
-                                font: `500 12px/16px ${FONT}`,
-                            }}
-                            onClick={() =>
-                                onAction?.(
-                                    "Trust URL",
-                                    "copied to clipboard"
-                                )
-                            }
-                        >
-                            Copy
-                        </button>
+                        <CopyButton text={PUBLIC_URL} />
                     </div>
 
                     <div
@@ -279,17 +257,6 @@ export function TrustCenterModal({
                     onClick={close}
                 >
                     Close
-                </button>
-                <button
-                    type="button"
-                    className="zbtn"
-                    style={btnPrimary}
-                    onClick={() =>
-                        onAction?.("Trust Center", "preview opened in new tab")
-                    }
-                >
-                    <Icon n="eye" s={12} c={C.bg} />
-                    View as customer
                 </button>
             </ModalFooter>
         </Modal>

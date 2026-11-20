@@ -4,8 +4,7 @@ import {
     FONT,
     MONO,
     Icon,
-    relTime,
-} from "./DashboardLib_1"
+} from "./DashboardLib"
 import {
     type Activity,
 } from "./DashboardData"
@@ -95,7 +94,7 @@ function respondTo(activity: Activity, userText: string): string {
     }
 
     if (q.includes("re-test") || q.includes("rerun") || q.includes("re-run")) {
-        return `Queueing a fresh run on ${target} with the current scope. Estimated 45 seconds. I'll surface a toast when it completes · or you can watch the Run timeline tab if you switch back.`
+        return `Queueing a fresh run on ${target} with the current scope. Estimated 45 seconds. Follow it in the Run timeline tab.`
     }
 
     if (q.includes("source") || q.includes("files")) {
@@ -257,10 +256,8 @@ export function AgentChat({
                     <div style={{ marginTop: 4 }}>
                         <div
                             style={{
-                                font: `500 10px/14px ${FONT}`,
+                                font: `500 12px/16px ${FONT}`,
                                 color: C.textSubtle,
-                                textTransform: "uppercase",
-                                letterSpacing: 0.4,
                                 marginBottom: 8,
                             }}
                         >
@@ -305,7 +302,7 @@ export function AgentChat({
                 style={{
                     padding: "12px 16px 14px 16px",
                     borderTop: `1px solid ${C.border}`,
-                    background: "rgba(0,0,0,0.10)",
+                    background: C.surfaceSunken,
                     display: "flex",
                     alignItems: "center",
                     gap: 8,
@@ -349,7 +346,7 @@ export function AgentChat({
                     <Icon
                         n="arrowRight"
                         s={14}
-                        c={draft.trim() ? "#FFFFFF" : C.textSubtle}
+                        c={draft.trim() ? C.accentFg : C.textSubtle}
                     />
                 </button>
             </form>
@@ -378,10 +375,8 @@ function Bubble({
             {!isUser && (
                 <div
                     style={{
-                        font: `500 10px/14px ${FONT}`,
+                        font: `500 12px/16px ${FONT}`,
                         color: C.textSubtle,
-                        textTransform: "uppercase",
-                        letterSpacing: 0.4,
                         paddingLeft: 2,
                     }}
                 >
@@ -397,7 +392,7 @@ function Bubble({
                     border: isUser
                         ? `1px solid ${C.accent}`
                         : `1px solid ${C.border}`,
-                    color: isUser ? "#FFFFFF" : C.text,
+                    color: isUser ? C.accentFg : C.text,
                     font: `400 13px/19px ${FONT}`,
                     whiteSpace: "pre-wrap",
                     wordBreak: "break-word",
@@ -411,7 +406,7 @@ function Bubble({
                             display: "inline-block",
                             width: 6,
                             marginLeft: 2,
-                            color: isUser ? "#FFFFFF" : C.accentSoft,
+                            color: isUser ? C.accentFg : C.accentSoft,
                             font: `500 13px/19px ${MONO}`,
                         }}
                     >

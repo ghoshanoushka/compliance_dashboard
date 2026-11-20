@@ -5,12 +5,11 @@ import {
     MONO,
     Icon,
     StatusPill,
-    ProgressBar,
     Spinner,
     btnPrimary,
     btnSecondary,
     relTime,
-} from "./DashboardLib_1"
+} from "./DashboardLib"
 import {
     type Ctl,
     type CtlStatus,
@@ -122,16 +121,6 @@ export function ControlDetailPanel({
     )
     const sectionKey = getSectionKey({ fw: control.fw, id: control.id })
     const sectionLabel = SECTION_LABELS[sectionKey] ?? sectionKey
-    const statusCopy: Record<CtlStatus, string> = {
-        passing: "Compliant",
-        review: "Awaiting review",
-        gap: "Open gap",
-    }
-    const statusColor: Record<CtlStatus, string> = {
-        passing: C.success,
-        review: C.warning,
-        gap: C.danger,
-    }
 
     return (
         <div
@@ -139,8 +128,7 @@ export function ControlDetailPanel({
             style={{
                 position: "absolute",
                 inset: 0,
-                background: "rgba(0,0,0,0.5)",
-                backdropFilter: "blur(2px)",
+                background: C.scrim,
                 display: "flex",
                 justifyContent: "flex-end",
                 zIndex: 80,
@@ -155,7 +143,7 @@ export function ControlDetailPanel({
                     height: "100%",
                     background: C.surfaceHi,
                     borderLeft: `1px solid ${C.borderHi}`,
-                    boxShadow: "-20px 0 60px rgba(0,0,0,0.4)",
+                    boxShadow: C.shadowLg,
                     display: "flex",
                     flexDirection: "column",
                     overflow: "hidden",
@@ -167,73 +155,13 @@ export function ControlDetailPanel({
                     style={{
                         flex: 1,
                         overflowY: "auto",
-                        padding: "0 20px 20px 20px",
+                        padding: "18px 20px 20px",
                         display: "flex",
                         flexDirection: "column",
                         gap: 18,
                     }}
                 >
-                    <div
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 12,
-                            padding: 12,
-                            background: C.surface,
-                            border: `1px solid ${C.border}`,
-                            borderRadius: 10,
-                        }}
-                    >
-                        <div
-                            style={{
-                                width: 32,
-                                height: 32,
-                                borderRadius: 999,
-                                background: statusColor[control.status] + "26",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                flexShrink: 0,
-                            }}
-                        >
-                            <Icon
-                                n={
-                                    control.status === "passing"
-                                        ? "check"
-                                        : control.status === "review"
-                                          ? "warning"
-                                          : "warning"
-                                }
-                                s={15}
-                                c={statusColor[control.status]}
-                            />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                            <div
-                                style={{
-                                    font: `600 14px/18px ${FONT}`,
-                                    color: C.text,
-                                }}
-                            >
-                                {statusCopy[control.status]}
-                            </div>
-                            <div
-                                style={{
-                                    font: `400 12px/16px ${FONT}`,
-                                    color: C.textMuted,
-                                    marginTop: 1,
-                                }}
-                            >
-                                Last tested{" "}
-                                {relTime(
-                                    pageLoadMs - control.lastTestMin * 60000
-                                )}{" "}
-                                · owned by {control.owner}
-                            </div>
-                        </div>
-                    </div>
-
-                    <MetaGrid control={control} />
+                    <MetaGrid control={control} lastTested={relTime(pageLoadMs - control.lastTestMin * 60000)} />
 
                     <EvidenceSection
                         evidence={evidence}
@@ -244,7 +172,6 @@ export function ControlDetailPanel({
                 </div>
 
                 <Footer
-                    onClose={onClose}
                     onRunTest={onRunTest}
                     onMarkReview={onMarkReview}
                     running={running}
@@ -293,9 +220,9 @@ function Header({
                         <div
                             style={{
                                 font: `500 11px/14px ${MONO}`,
-                                color: C.accentSoft,
+                                color: C.textMuted,
                                 padding: "2px 6px",
-                                background: C.accentBg,
+                                background: C.hoverOverlay,
                                 borderRadius: 4,
                             }}
                         >
@@ -349,72 +276,25 @@ function Header({
 
 function MetaGrid({
     control,
+    lastTested,
 }: {
     control: Ctl & { status: CtlStatus }
+    lastTested: string
 }) {
+    const rows: [string, string][] = [
+        ["Owner", control.owner],
+        ["Last tested", lastTested],
+        ["Next test", "in 7 days"],
+    ]
     return (
-        <div
-            style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 10,
-            }}
-        >
-            <MetaItem label="Framework" value={control.fw} mono />
-            <MetaItem label="Owner" value={control.owner} />
-            <MetaItem
-                label="Evidence count"
-                value={String(control.evidence)}
-                accent={control.evidence === 0}
-            />
-            <MetaItem
-                label="Next scheduled test"
-                value="in 7 days"
-            />
-        </div>
-    )
-}
-
-function MetaItem({
-    label,
-    value,
-    mono,
-    accent,
-}: {
-    label: string
-    value: string
-    mono?: boolean
-    accent?: boolean
-}) {
-    return (
-        <div
-            style={{
-                padding: "10px 12px",
-                background: C.surface,
-                border: `1px solid ${C.border}`,
-                borderRadius: 8,
-            }}
-        >
-            <div
-                style={{
-                    font: `500 10px/14px ${FONT}`,
-                    color: C.textSubtle,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    marginBottom: 4,
-                }}
-            >
-                {label}
-            </div>
-            <div
-                style={{
-                    font: `${mono ? `500 13px/18px ${MONO}` : `500 13px/18px ${FONT}`}`,
-                    color: accent ? C.danger : C.text,
-                }}
-            >
-                {value}
-            </div>
-        </div>
+        <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "120px 1fr", rowGap: 10 }}>
+            {rows.map(([label, value]) => (
+                <React.Fragment key={label}>
+                    <dt style={{ font: `400 13px/18px ${FONT}`, color: C.textSubtle }}>{label}</dt>
+                    <dd style={{ margin: 0, font: `500 13px/18px ${FONT}`, color: C.text }}>{value}</dd>
+                </React.Fragment>
+            ))}
+        </dl>
     )
 }
 
@@ -431,7 +311,7 @@ function EvidenceSection({
         <Section
             title="Evidence files"
             count={evidence.length}
-            empty="No evidence on file · Controls Agent will collect on next run"
+            empty="No evidence yet. The agent collects it on the next test run."
         >
             {evidence.map((e, i) => (
                 <div
@@ -575,17 +455,15 @@ function Section({
             >
                 <div
                     style={{
-                        font: `500 11px/14px ${FONT}`,
+                        font: `500 12px/16px ${FONT}`,
                         color: C.textMuted,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.04em",
                     }}
                 >
                     {title}
                 </div>
                 <div
                     style={{
-                        font: `500 11px/14px ${MONO}`,
+                        font: `500 11px/14px ${FONT}`,
                         color: C.textSubtle,
                     }}
                 >
@@ -624,13 +502,11 @@ function Section({
 // ============ FOOTER ============
 
 function Footer({
-    onClose,
     onRunTest,
     onMarkReview,
     running,
     status,
 }: {
-    onClose: () => void
     onRunTest: () => void
     onMarkReview: () => void
     running: boolean
@@ -644,17 +520,9 @@ function Footer({
                 display: "flex",
                 gap: 8,
                 flexShrink: 0,
-                background: "rgba(0,0,0,0.15)",
+                background: C.surfaceSunken,
             }}
         >
-            <button
-                type="button"
-                className="zbtn"
-                style={btnSecondary}
-                onClick={onClose}
-            >
-                Close
-            </button>
             {status !== "review" && (
                 <button
                     type="button"
@@ -680,7 +548,7 @@ function Footer({
                 {running ? (
                     <Spinner size={11} />
                 ) : (
-                    <Icon n="play" s={10} c={C.bg} />
+                    <Icon n="play" s={10} c={C.primaryFg} />
                 )}
                 {running ? "Running…" : "Run test"}
             </button>
