@@ -22,6 +22,7 @@ import {
     IconUser,
     IconBuilding,
     IconChevronDown,
+    IconArrowBackUp,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -34,6 +35,58 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { ITEMS, COLLECTION_STAGES, STAGE_OF, STATUS_META, STEP_SUMMARIES, VENDOR, EvidenceItem, StepSummary, CoverageSection, Status, Variant } from "./data"
+import { usePersistentState } from "@/dashboard/AppViews"
+
+/* -------------------------------------------------------- Review decisions */
+
+// An analyst's call on something the agent collected. Accepting verifies it;
+// rejecting sends it back to the vendor with the reason as the next ask.
+export interface Decision {
+    verdict: "accepted" | "rejected"
+    reason: string
+    at: number
+}
+
+// Only single artifacts waiting on the analyst can be accepted or rejected.
+// The questionnaire is a composite with its own round-based actions.
+const ORIGINAL_STATUS = Object.fromEntries(ITEMS.map((i) => [i.id, i.status])) as Record<string, Status>
+const isReviewable = (id: string) => ORIGINAL_STATUS[id] === "review" && id !== "questionnaire"
+
+function applyDecision(item: EvidenceItem, d: Decision | undefined): EvidenceItem {
+    if (!d || !isReviewable(item.id)) return item
+    const time = timeAgo(d.at)
+    if (d.verdict === "accepted") {
+        return {
+            ...item,
+            status: "resolved",
+            summary: d.reason ? `Accepted by you: ${d.reason}` : "Accepted by you.",
+            outstanding: [],
+            thread: [...item.thread, { id: `${item.id}-accepted`, kind: "analyst", round: item.round, time, body: d.reason ? `Accepted the agent's recommendation. ${d.reason}` : "Accepted the agent's recommendation." }],
+        }
+    }
+    const next = item.round + 1
+    return {
+        ...item,
+        status: "pending",
+        round: next,
+        source: `Sent back · Round ${next}`,
+        summary: `Rejected by you: ${d.reason}`,
+        outstanding: [d.reason],
+        thread: [
+            ...item.thread,
+            { id: `${item.id}-rejected`, kind: "analyst", round: next, time, body: `Rejected the agent's recommendation. ${d.reason}` },
+            { id: `${item.id}-requeued`, kind: "system", round: next, time, body: `Added to the Round ${next} follow-up for Twilio, with your reason as the request.` },
+        ],
+    }
+}
+
+function timeAgo(at: number) {
+    const min = Math.round((Date.now() - at) / 60_000)
+    if (min < 1) return "just now"
+    if (min < 60) return `${min}m ago`
+    const h = Math.round(min / 60)
+    return h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`
+}
 
 const V: Record<Variant, { text: string; softBg: string; dot: string }> = {
     success: { text: "text-success", softBg: "bg-success/15", dot: "bg-success" },
@@ -61,29 +114,40 @@ export function EvidenceCollection({ onBack }: { onBack: () => void }) {
     // 'Longest negotiation' stat tile to focus the board on the dragging item
     // rather than just opening its drawer in a noisy board.
     const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
+    // The analyst's accept/reject calls on agent-collected items. Kept across
+    // reloads; the board, counts and drawer all read the decided state.
+    const [decisions, setDecisions] = usePersistentState<Record<string, Decision>>("vendor-evidence-decisions", {})
+    const decide = (id: string, verdict: Decision["verdict"], reason: string) =>
+        setDecisions((prev) => ({ ...prev, [id]: { verdict, reason: reason.trim(), at: Date.now() } }))
+    const undo = (id: string) =>
+        setDecisions((prev) => {
+            const next = { ...prev }
+            delete next[id]
+            return next
+        })
+    const items = useMemo(() => ITEMS.map((i) => applyDecision(i, decisions[i.id])), [decisions])
 
-
-    const selected = ITEMS.find((i) => i.id === selectedId) ?? null
+    const selected = items.find((i) => i.id === selectedId) ?? null
 
     const counts = useMemo(() => {
         const c = { resolved: 0, review: 0, pending: 0, blocked: 0 }
-        ITEMS.forEach((i) => (c[i.status] += 1))
+        items.forEach((i) => (c[i.status] += 1))
         return c
-    }, [])
-    const maxRound = Math.max(...ITEMS.map((i) => i.round))
+    }, [items])
+    const maxRound = Math.max(...items.map((i) => i.round))
     // The item that's gone through the most rounds with the vendor. Surfaces
     // the "what's dragging" question · replaces the misleading 'Current round'.
     const longestNegotiation = useMemo(() => {
         if (maxRound === 0) return null
-        return ITEMS.reduce((acc, i) => (i.round > acc.round ? i : acc), ITEMS[0])
-    }, [maxRound])
-    const bundleItems = ITEMS.filter((i) => i.status === "pending" || i.status === "blocked")
+        return items.reduce((acc, i) => (i.round > acc.round ? i : acc), items[0])
+    }, [items, maxRound])
+    const bundleItems = items.filter((i) => i.status === "pending" || i.status === "blocked")
 
     const matchesFilter = (i: EvidenceItem) => {
         if (filter === "all") return true
         return i.status === filter
     }
-    const filtered = ITEMS.filter((i) => {
+    const filtered = items.filter((i) => {
         if (focusedItemId) return i.id === focusedItemId
         const q = query.trim().toLowerCase()
         const matchQ = !q || i.title.toLowerCase().includes(q) || i.summary.toLowerCase().includes(q) || i.category.toLowerCase().includes(q)
@@ -131,11 +195,19 @@ export function EvidenceCollection({ onBack }: { onBack: () => void }) {
                         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
                             <WorkspaceHeader counts={counts} longestNegotiation={longestNegotiation} focusedItemId={focusedItemId} bundleCount={bundleItems.length} onReviewBundle={() => { setSelectedId(null); setBundleOpen(true) }} onFocusItem={openItemFocused} />
                             <Toolbar query={query} setQuery={setQuery} filter={filter} setFilter={chooseFilter} counts={counts} />
-                            <Board items={filtered} selectedId={selectedId} onSelect={openItem} filterActive={filter !== "all" || query.trim() !== ""} compact={panelOpen} />
+                            <Board items={filtered} allItems={items} selectedId={selectedId} onSelect={openItem} filterActive={filter !== "all" || query.trim() !== ""} compact={panelOpen} />
                         </main>
                         {panelOpen && (
                             <aside key={selectedId ?? "bundle"} className="flex w-[460px] shrink-0 animate-slide-in-right flex-col border-l border-border bg-popover shadow-2xl">
-                                {bundleOpen ? <BundleDrawer items={bundleItems} round={maxRound} onClose={closePanel} /> : selected ? <InvestigationDrawer item={selected} onClose={closePanel} /> : null}
+                                {bundleOpen ? <BundleDrawer items={bundleItems} round={maxRound} onClose={closePanel} /> : selected ? (
+                                    <InvestigationDrawer
+                                        item={selected}
+                                        decision={decisions[selected.id]}
+                                        onDecide={(verdict, reason) => decide(selected.id, verdict, reason)}
+                                        onUndo={() => undo(selected.id)}
+                                        onClose={closePanel}
+                                    />
+                                ) : null}
                             </aside>
                         )}
                     </div>
@@ -382,12 +454,12 @@ const byPriority = (a: EvidenceItem, b: EvidenceItem) => {
     return d !== 0 ? d : b.round - a.round
 }
 
-function Board({ items, selectedId, onSelect, filterActive, compact }: { items: EvidenceItem[]; selectedId: string | null; onSelect: (id: string) => void; filterActive: boolean; compact: boolean }) {
+function Board({ items, allItems, selectedId, onSelect, filterActive, compact }: { items: EvidenceItem[]; allItems: EvidenceItem[]; selectedId: string | null; onSelect: (id: string) => void; filterActive: boolean; compact: boolean }) {
     // Default-collapse fully-clean stages; keep ones needing attention open.
     const [collapsed, setCollapsed] = useState<Set<string>>(() => {
         const c = new Set<string>()
         COLLECTION_STAGES.forEach((s) => {
-            const all = ITEMS.filter((i) => STAGE_OF[i.id] === s.id)
+            const all = allItems.filter((i) => STAGE_OF[i.id] === s.id)
             if (all.length > 0 && all.every((i) => i.status === "resolved")) c.add(s.id)
         })
         return c
@@ -419,7 +491,7 @@ function Board({ items, selectedId, onSelect, filterActive, compact }: { items: 
 
     const stages = COLLECTION_STAGES.map((s) => ({
         stage: s,
-        all: ITEMS.filter((i) => STAGE_OF[i.id] === s.id).sort(byPriority),
+        all: allItems.filter((i) => STAGE_OF[i.id] === s.id).sort(byPriority),
         shown: items.filter((i) => STAGE_OF[i.id] === s.id).sort(byPriority),
     })).filter((g) => g.shown.length > 0)
 
@@ -530,7 +602,7 @@ function EvidenceRow({ item, active, last, onClick, compact }: { item: EvidenceI
                 <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", V[m.variant].dot)} />
                 {m.label}
             </span>
-            <span className="text-right text-[12px] tabular-nums text-muted-foreground/60">{latest.time.replace(" ago", "")}</span>
+            <span className="whitespace-nowrap text-right text-[12px] tabular-nums text-muted-foreground/60">{latest.time.replace(" ago", "").replace("just now", "now")}</span>
         </button>
     )
 }
@@ -554,7 +626,7 @@ const EVENT_STYLE: Record<string, { label: string; icon: typeof IconUser; tint: 
     system: { label: "System", icon: IconRefresh, tint: "text-muted-foreground", iconBg: "bg-[hsl(var(--surface-hi))]" },
 }
 
-function InvestigationDrawer({ item, onClose }: { item: EvidenceItem; onClose: () => void }) {
+function InvestigationDrawer({ item, decision, onDecide, onUndo, onClose }: { item: EvidenceItem; decision?: Decision; onDecide: (verdict: Decision["verdict"], reason: string) => void; onUndo: () => void; onClose: () => void }) {
     const [draft, setDraft] = useState("")
     const rounds = Array.from(new Set(item.thread.map((e) => e.round))).sort((a, b) => a - b)
     const totalMessages = item.thread.filter((e) => e.kind !== "system").length
@@ -583,6 +655,8 @@ function InvestigationDrawer({ item, onClose }: { item: EvidenceItem; onClose: (
                         {item.confidence != null && <KeyFact icon={IconGauge} label="AI confidence" value={`${item.confidence}%`} />}
                         {/* Answered keyfact is suppressed on questionnaire · coverage block already shows it. */}
                     </div>
+
+                    {decision && isReviewable(item.id) && <DecisionRecord decision={decision} onUndo={onUndo} />}
 
                     {/* Latest answer · bottom line, always visible at top */}
                     {!isQuestionnaire && item.latestAnswer && (
@@ -688,8 +762,76 @@ function InvestigationDrawer({ item, onClose }: { item: EvidenceItem; onClose: (
                     </div>
                 </div>
             </ScrollArea>
-            <DrawerActions item={item} draft={draft} setDraft={setDraft} />
+            <DrawerActions item={item} decided={!!decision} onDecide={onDecide} draft={draft} setDraft={setDraft} />
         </>
+    )
+}
+
+// Who decided, when and why, at the top of the drawer. Undo puts the item
+// back in 'Needs review' and removes the decision from the thread.
+function DecisionRecord({ decision, onUndo }: { decision: Decision; onUndo: () => void }) {
+    const accepted = decision.verdict === "accepted"
+    return (
+        <div className={cn("mt-3 rounded-xl border p-3.5", accepted ? "border-success/40 bg-success/10" : "border-warning/40 bg-warning/10")}>
+            <div className="flex items-center gap-2">
+                {accepted ? <IconCheck size={14} stroke={2.4} className="text-success" /> : <IconArrowBackUp size={14} stroke={2.4} className="text-warning" />}
+                <span className="flex-1 text-[13px] font-semibold text-foreground">
+                    {accepted ? "Accepted by you" : "Rejected by you · sent back to Twilio"}
+                    <span className="font-normal text-muted-foreground"> · {timeAgo(decision.at)}</span>
+                </span>
+                <Button variant="outline" size="sm" onClick={onUndo}>
+                    Undo
+                </Button>
+            </div>
+            {decision.reason && <p className="mt-1.5 pl-[22px] text-[13px] leading-snug text-foreground">{decision.reason}</p>}
+        </div>
+    )
+}
+
+// Accept or reject what the agent collected. One note field serves both:
+// optional when accepting, required when rejecting, since a rejection with
+// no reason gives the agent nothing to ask the vendor.
+function ReviewActions({ onDecide }: { onDecide: (verdict: Decision["verdict"], reason: string) => void }) {
+    const [reason, setReason] = useState("")
+    const acceptRef = useRef<HTMLButtonElement>(null)
+    const canReject = reason.trim().length > 0
+    return (
+        <div className="mb-3 space-y-2">
+            <label htmlFor="review-reason" className="text-[12px] font-medium text-muted-foreground">
+                Your reason <span className="font-normal">(required to reject)</span>
+            </label>
+            <textarea
+                id="review-reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={2}
+                placeholder="e.g. Cap is still below our $10M standard; ask for Legal sign-off"
+                className="zfocus w-full resize-none rounded-lg border border-border bg-[hsl(var(--surface-hi))] px-3 py-2 text-[13px] leading-snug text-foreground outline-none placeholder:text-muted-foreground/60"
+            />
+            <div className="flex gap-2">
+                <Button
+                    ref={acceptRef}
+                    className="flex-1"
+                    onClick={() => {
+                        celebrate(acceptRef.current)
+                        onDecide("accepted", reason)
+                    }}
+                >
+                    <IconCheck size={15} /> Accept & verify
+                </Button>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        {/* Wrapper keeps the tooltip working while the button is disabled. */}
+                        <span tabIndex={canReject ? -1 : 0}>
+                            <Button variant="outline" disabled={!canReject} onClick={() => onDecide("rejected", reason)}>
+                                <IconArrowBackUp size={15} /> Reject
+                            </Button>
+                        </span>
+                    </TooltipTrigger>
+                    {!canReject && <TooltipContent>Add a reason to reject</TooltipContent>}
+                </Tooltip>
+            </div>
+        </div>
     )
 }
 
@@ -820,7 +962,7 @@ function KeyFact({ icon: Ic, label, value }: { icon: typeof IconClock; label: st
     )
 }
 
-function DrawerActions({ item, draft, setDraft }: { item: EvidenceItem; draft: string; setDraft: (s: string) => void }) {
+function DrawerActions({ item, decided, onDecide, draft, setDraft }: { item: EvidenceItem; decided: boolean; onDecide: (verdict: Decision["verdict"], reason: string) => void; draft: string; setDraft: (s: string) => void }) {
     const isQuestionnaire = item.id === "questionnaire"
     const openQuestions = item.coverage
         ? item.coverage.sections.reduce((s, x) => s + (x.total - x.filled), 0)
@@ -846,6 +988,9 @@ function DrawerActions({ item, draft, setDraft }: { item: EvidenceItem; draft: s
                         <TooltipContent>Mark complete</TooltipContent>
                     </Tooltip>
                 </div>
+            ) : isReviewable(item.id) ? (
+                // Decided items show their record (with Undo) at the top instead.
+                decided ? null : <ReviewActions onDecide={onDecide} />
             ) : (
                 <div className="mb-3 flex gap-2">
                     <WinButton
